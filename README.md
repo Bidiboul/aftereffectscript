@@ -22,19 +22,35 @@ See [INSTALLATION.md](INSTALLATION.md) for full instructions.
 | **White Flash** | Creates a 6-frame white solid (`EH_White_Flash`) starting at the current time with an opacity fade from 100 % to 0 %. |
 | **Black Flash** | Same as White Flash but black (`EH_Black_Flash`). |
 
-### Motion
+### Zooms
 
 | Button | Description |
 |---|---|
-| **Impact Shake** | Applies `wiggle(18, 35)` to the **Position** property of every selected layer. Perfect for hit reactions and impact frames. |
-| **Smooth Zoom** | Adds two **Scale** keyframes on each selected layer: current scale at the current time, then +15 % over the next 12 frames, with Easy Ease applied. |
+| **Smooth Zoom In** | Eased scale-up on selected layers (default +15 % over 12 frames — both configurable in Settings). |
+| **Smooth Zoom Out** | Eased scale-down on selected layers. |
+| **Punch Out-In** | Zoom out then back to the original scale — recoil effect. |
+| **Punch In-Out** | Zoom in then back — impact effect. |
+
+### Shakes
+
+| Button | Description |
+|---|---|
+| **Quick Shake — Light / Medium / Heavy** | Non-destructive shake on a dedicated adjustment layer (native Transform effect + wiggle), lasting 10 frames from the playhead. Your footage is never touched. |
+| **Impact Shake (expression)** | Applies `wiggle(18, 35)` directly to the **Position** property of selected layers. |
 
 ### Effects
 
 | Button | Description |
 |---|---|
-| **RGB Split** | Duplicates the first selected layer three times (`EH_RGB_Red`, `EH_RGB_Green`, `EH_RGB_Blue`), offsets each copy by a few pixels, and sets Screen blend mode to fake chromatic aberration. |
+| **RGB Split** | True R/G/B channel separation: 3 duplicates with native **Shift Channels** (one channel each), pixel offsets and Add blend mode. |
 | **Glow Boost** | Adds After Effects' native **Glow** effect to each selected layer (Threshold 60 %, Radius 35 px, Intensity 1.5). |
+| **Speed Lines (anime)** | Radial anime-style speed lines overlay — Fractal Noise + Polar Coordinates, Screen blend, animated. 100 % native effects. |
+| **Freeze Frame** | Splits the selected layer at the playhead and holds the frame with time remapping. |
+
+### Customization & License
+
+- **Settings & Theme** button at the bottom of the panel: Dark/Light theme, accent color (6 presets or any custom hex), zoom intensity and duration. All settings persist between sessions.
+- **License system**: enter your `EHP-XXXX-XXXX-XXXX` key in Settings to switch from Trial to Licensed. Sellers generate keys with `tools/generate_license_key.jsx`.
 
 ### Project
 

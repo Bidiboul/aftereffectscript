@@ -6,6 +6,29 @@ Format: `[Version] — YYYY-MM-DD`
 
 ---
 
+## [0.2.0] — 2026-06-09
+
+### Added
+
+- **Custom themed UI** — flat buttons drawn with the ScriptUI graphics API, vector icons (SVG-equivalent), accent strip, hover/press states.
+- **Theme system** — Dark / Light themes plus customizable accent color (6 presets + custom hex), persisted via `app.settings`.
+- **Settings dialog** — customize theme, accent color, zoom intensity and zoom duration; everything is saved between sessions.
+- **Smooth Zoom Out** — progressive zoom-out on selected layers.
+- **Punch Out-In** — zoom out then back (recoil effect), 3 eased keyframes.
+- **Punch In-Out** — zoom in then back (impact effect), 3 eased keyframes.
+- **Quick Shake (Light / Medium / Heavy)** — non-destructive shakes applied on a dedicated adjustment layer with the native Transform effect, lasting 10 frames from the current time. The footage below is never modified.
+- **Speed Lines (anime)** — radial anime-style speed lines overlay built only with native effects (Fractal Noise + Polar Coordinates, Screen blend mode, animated evolution).
+- **Freeze Frame** — splits the selected layer at the playhead: the original keeps playing until the freeze point, a time-remapped hold duplicate takes over.
+- **License system** — offline key validation (`EHP-XXXX-XXXX-XXXX` with checksum), activation from the Settings dialog, Trial/Licensed badge in the footer. Seller-side key generator in `tools/generate_license_key.jsx`.
+
+### Changed
+
+- **RGB Split** now performs true channel isolation using the native **Shift Channels** effect (one channel per duplicate) with Add blend mode; the source layer is disabled instead of left visible.
+- Zoom intensity and duration are now configurable in Settings (defaults: 15 %, 12 frames).
+- All feature code refactored around `withUndo()` and `requireSelection()` helpers.
+
+---
+
 ## [0.1.0] — 2026-06-09
 
 ### Added

@@ -1,52 +1,55 @@
 /**
- * Edit Helper Panel v0.2
+ * Edit Helper Panel v0.3
  * ScriptUI Panel for Adobe After Effects (2024+)
  *
- * Place this file in: [AE Install]/Scripts/ScriptUI Panels/
- * Then open it via: Window > Edit Helper Panel
+ * Place in: [AE Install]/Scripts/ScriptUI Panels/
+ * Open via: Window > Edit Helper Panel
  *
- * NOTE ON ICONS: ScriptUI cannot load SVG files directly. Icons are drawn
- * as vector shapes with the ScriptUI graphics API (onDraw), which gives a
- * crisp, theme-aware result equivalent to inline SVG.
+ * New in v0.3:
+ *  - Tabbed layout (Edit / Text / Sounds / Overlays)
+ *  - Text animation presets (Typewriter, Fade Up, Bounce In, Glitch, Slide, Word Reveal)
+ *  - Sound bank (folder browser + one-click import into comp)
+ *  - Overlay bank (Film Grain, Vignette, Light Leak, VHS, Scanlines,
+ *                  Lens Flare, Dust & Scratches, Color Tint)
  */
 
 (function EditHelperPanel(thisObj) {
 
     var SCRIPT_NAME    = "Edit Helper Panel";
-    var SCRIPT_VERSION = "0.2";
+    var SCRIPT_VERSION = "0.3";
     var SETTINGS_KEY   = "EditHelperPanel";
 
     // ============================================================
-    //  SETTINGS (persisted via app.settings)
+    //  SETTINGS
     // ============================================================
 
     var DEFAULTS = {
-        theme       : "dark",     // "dark" | "light"
-        accent      : "#7C5CFF",  // accent color (hex)
-        zoomAmount  : 15,         // % scale change for smooth zooms
-        zoomFrames  : 12,         // duration of zooms in frames
-        licenseKey  : ""          // stored license key
+        theme       : "dark",
+        accent      : "#7C5CFF",
+        zoomAmount  : 15,
+        zoomFrames  : 12,
+        licenseKey  : "",
+        soundFolder : ""
     };
 
     function loadSetting(key) {
         try {
-            if (app.settings.haveSetting(SETTINGS_KEY, key)) {
+            if (app.settings.haveSetting(SETTINGS_KEY, key))
                 return app.settings.getSetting(SETTINGS_KEY, key);
-            }
         } catch (e) {}
         return String(DEFAULTS[key]);
     }
-
     function saveSetting(key, value) {
         try { app.settings.saveSetting(SETTINGS_KEY, key, String(value)); } catch (e) {}
     }
 
     var settings = {
-        theme      : loadSetting("theme"),
-        accent     : loadSetting("accent"),
-        zoomAmount : parseFloat(loadSetting("zoomAmount")),
-        zoomFrames : parseInt(loadSetting("zoomFrames"), 10),
-        licenseKey : loadSetting("licenseKey")
+        theme       : loadSetting("theme"),
+        accent      : loadSetting("accent"),
+        zoomAmount  : parseFloat(loadSetting("zoomAmount")),
+        zoomFrames  : parseInt(loadSetting("zoomFrames"), 10),
+        licenseKey  : loadSetting("licenseKey"),
+        soundFolder : loadSetting("soundFolder")
     };
 
     // ============================================================
@@ -54,894 +57,1127 @@
     // ============================================================
 
     var THEMES = {
-        dark: {
-            bg        : [0.13, 0.13, 0.15],
-            panel     : [0.17, 0.17, 0.20],
-            text      : [0.92, 0.92, 0.95],
-            subtext   : [0.60, 0.60, 0.66],
-            btnHover  : [0.26, 0.26, 0.31]
-        },
-        light: {
-            bg        : [0.93, 0.93, 0.95],
-            panel     : [0.88, 0.88, 0.91],
-            text      : [0.12, 0.12, 0.15],
-            subtext   : [0.40, 0.40, 0.46],
-            btnHover  : [0.80, 0.80, 0.85]
-        }
+        dark:  { bg: [0.13,0.13,0.15], panel: [0.17,0.17,0.20], text: [0.92,0.92,0.95],
+                 subtext: [0.60,0.60,0.66], btnHover: [0.26,0.26,0.31] },
+        light: { bg: [0.93,0.93,0.95], panel: [0.88,0.88,0.91], text: [0.12,0.12,0.15],
+                 subtext: [0.40,0.40,0.46], btnHover: [0.80,0.80,0.85] }
     };
 
-    /** Converts "#RRGGBB" to [r,g,b] floats 0–1. */
+    var ACCENT_PRESETS = [
+        { name:"Violet",         hex:"#7C5CFF" },
+        { name:"Cyan",           hex:"#2FD3E0" },
+        { name:"Rose",           hex:"#FF4D7D" },
+        { name:"Lime",           hex:"#9BE15D" },
+        { name:"Orange",         hex:"#FF9040" },
+        { name:"Rouge Valorant", hex:"#FF4655" }
+    ];
+
     function hexToRgb(hex) {
         hex = hex.replace("#", "");
-        return [
-            parseInt(hex.substring(0, 2), 16) / 255,
-            parseInt(hex.substring(2, 4), 16) / 255,
-            parseInt(hex.substring(4, 6), 16) / 255
-        ];
+        return [parseInt(hex.substring(0,2),16)/255,
+                parseInt(hex.substring(2,4),16)/255,
+                parseInt(hex.substring(4,6),16)/255];
     }
-
     function theme()  { return THEMES[settings.theme] || THEMES.dark; }
     function accent() { return hexToRgb(settings.accent); }
 
-    var ACCENT_PRESETS = [
-        { name: "Violet", hex: "#7C5CFF" },
-        { name: "Cyan",   hex: "#2FD3E0" },
-        { name: "Rose",   hex: "#FF4D7D" },
-        { name: "Lime",   hex: "#9BE15D" },
-        { name: "Orange", hex: "#FF9040" },
-        { name: "Rouge Valorant", hex: "#FF4655" }
-    ];
-
     // ============================================================
-    //  LICENSE SYSTEM (offline key validation)
-    // ============================================================
-    //  Key format : EHP-XXXX-XXXX-CCCC
-    //  The last group is a checksum: sum of char codes of the first
-    //  8 payload chars, mod 9973, in base-36 uppercase, padded to 4.
-    //  Generate keys with the same algorithm on the seller side.
+    //  LICENSE
     // ============================================================
 
     function computeChecksum(payload) {
         var sum = 0;
-        for (var i = 0; i < payload.length; i++) {
-            sum += payload.charCodeAt(i) * (i + 7);
-        }
+        for (var i = 0; i < payload.length; i++) sum += payload.charCodeAt(i) * (i + 7);
         var c = (sum % 9973).toString(36).toUpperCase();
         while (c.length < 4) c = "0" + c;
         return c;
     }
-
     function validateLicenseKey(key) {
-        key = key.toUpperCase().replace(/\s/g, "");
+        key = key.toUpperCase().replace(/\s/g,"");
         var m = key.match(/^EHP-([A-Z0-9]{4})-([A-Z0-9]{4})-([A-Z0-9]{4})$/);
         if (!m) return false;
         return computeChecksum(m[1] + m[2]) === m[3];
     }
-
-    function isLicensed() {
-        return validateLicenseKey(settings.licenseKey);
-    }
+    function isLicensed() { return validateLicenseKey(settings.licenseKey); }
 
     // ============================================================
-    //  UTILITY FUNCTIONS
+    //  UTILITIES
     // ============================================================
 
     function getActiveComp() {
         return app.project.activeItem instanceof CompItem ? app.project.activeItem : null;
     }
-
     function requireActiveComp() {
         var comp = getActiveComp();
         if (!comp) {
-            alert(SCRIPT_NAME + "\n\nNo active composition found.\nPlease open or select a composition first.");
+            alert(SCRIPT_NAME + "\n\nAucune composition active.\nOuvrez ou sélectionnez une composition.");
             throw new Error("No active comp");
         }
         return comp;
     }
-
-    function getSelectedLayers(comp) {
-        return comp.selectedLayers;
-    }
-
-    function framesToSeconds(frames, comp) {
-        return frames / comp.frameRate;
-    }
+    function getSelectedLayers(comp) { return comp.selectedLayers; }
+    function framesToSeconds(frames, comp) { return frames / comp.frameRate; }
 
     function createFolderIfMissing(name) {
         var items = app.project.items;
-        for (var i = 1; i <= items.length; i++) {
+        for (var i = 1; i <= items.length; i++)
             if (items[i] instanceof FolderItem && items[i].name === name) return items[i];
-        }
         return app.project.items.addFolder(name);
     }
-
     function getUniqueCompName(baseName) {
-        var index = 1;
-        var candidate = baseName;
-        var items = app.project.items;
+        var idx = 1, candidate = baseName;
         while (true) {
             var found = false;
-            for (var i = 1; i <= items.length; i++) {
-                if (items[i].name === candidate) { found = true; break; }
-            }
+            for (var i = 1; i <= app.project.items.length; i++)
+                if (app.project.items[i].name === candidate) { found = true; break; }
             if (!found) return candidate;
-            index++;
-            candidate = baseName.replace(/\d+$/, "") + (index < 10 ? "0" + index : index);
+            idx++;
+            candidate = baseName.replace(/\d+$/, "") + (idx < 10 ? "0" + idx : idx);
         }
     }
-
-    /** Applies Easy Ease to the last `count` keyframes of a property. */
     function easeLastKeys(prop, count) {
         try {
-            var ease = [new KeyframeEase(0.5, 33.33)];
-            var dims = prop.value instanceof Array ? prop.value.length : 1;
-            var eases = [];
-            for (var d = 0; d < dims; d++) eases.push(ease[0]);
-            for (var k = prop.numKeys - count + 1; k <= prop.numKeys; k++) {
-                prop.setTemporalEaseAtKey(k, eases, eases);
-            }
-        } catch (e) { /* easing is cosmetic — ignore failures */ }
+            var e = [new KeyframeEase(0.5, 33.33)];
+            var dims = (prop.value instanceof Array) ? prop.value.length : 1;
+            var ea = []; for (var d = 0; d < dims; d++) ea.push(e[0]);
+            for (var k = prop.numKeys - count + 1; k <= prop.numKeys; k++)
+                prop.setTemporalEaseAtKey(k, ea, ea);
+        } catch (e) {}
     }
-
-    /** Runs fn inside an undo group, swallowing the requireActiveComp throw. */
     function withUndo(label, fn) {
         app.beginUndoGroup("EH: " + label);
         try { fn(); }
         catch (e) { if (e.message !== "No active comp") alert("EH Error: " + e.message); }
         app.endUndoGroup();
     }
-
-    /** Alerts and returns false if no layer is selected. */
-    function requireSelection(comp, featureName) {
+    function requireSelection(comp, feat) {
         if (getSelectedLayers(comp).length === 0) {
-            alert(SCRIPT_NAME + "\n\n" + featureName + ": please select at least one layer.");
+            alert(SCRIPT_NAME + "\n\n" + feat + " : sélectionnez au moins un calque.");
             return false;
         }
         return true;
     }
 
     // ============================================================
-    //  FEATURES — LAYERS
+    //  FEATURES — EDIT TAB (unchanged from v0.2)
     // ============================================================
 
     function createAdjustmentLayer() {
-        withUndo("Create Adjustment Layer", function () {
-            var comp = requireActiveComp();
-            var selected = getSelectedLayers(comp);
-
-            var inPoint  = comp.workAreaStart;
-            var duration = comp.workAreaDuration;
-
+        withUndo("Adjustment Layer", function() {
+            var comp = requireActiveComp(), selected = getSelectedLayers(comp);
+            var inPoint = comp.workAreaStart, duration = comp.workAreaDuration;
             if (selected.length > 0) {
-                var earliest = selected[0].inPoint, latest = selected[0].outPoint;
+                var e = selected[0].inPoint, l = selected[0].outPoint;
                 for (var i = 1; i < selected.length; i++) {
-                    if (selected[i].inPoint  < earliest) earliest = selected[i].inPoint;
-                    if (selected[i].outPoint > latest)   latest   = selected[i].outPoint;
+                    if (selected[i].inPoint  < e) e = selected[i].inPoint;
+                    if (selected[i].outPoint > l) l = selected[i].outPoint;
                 }
-                inPoint  = earliest;
-                duration = latest - earliest;
+                inPoint = e; duration = l - e;
             }
-
-            var adj = comp.layers.addSolid([0.5, 0.5, 0.5], "EH_Adjustment",
+            var adj = comp.layers.addSolid([0.5,0.5,0.5], "EH_Adjustment",
                 comp.width, comp.height, comp.pixelAspect, duration);
-            adj.adjustmentLayer = true;
-            adj.inPoint = inPoint;
-            adj.name = "EH_Adjustment";
-            adj.moveToBeginning();
+            adj.adjustmentLayer = true; adj.inPoint = inPoint;
+            adj.name = "EH_Adjustment"; adj.moveToBeginning();
         });
     }
 
     function createFlash(color) {
-        var isWhite = (color === "white");
-        withUndo((isWhite ? "White" : "Black") + " Flash", function () {
+        withUndo((color==="white"?"White":"Black")+" Flash", function() {
             var comp = requireActiveComp();
-            var startTime = comp.time;
-            var endTime = Math.min(startTime + framesToSeconds(6, comp), comp.duration);
-
-            var flash = comp.layers.addSolid(isWhite ? [1, 1, 1] : [0, 0, 0],
-                isWhite ? "EH_White_Flash" : "EH_Black_Flash",
-                comp.width, comp.height, comp.pixelAspect, endTime - startTime);
-            flash.inPoint = startTime;
-            flash.name = isWhite ? "EH_White_Flash" : "EH_Black_Flash";
-
-            var opacity = flash.property("Transform").property("Opacity");
-            opacity.setValueAtTime(startTime, 100);
-            opacity.setValueAtTime(endTime, 0);
-            flash.moveToBeginning();
+            var s = comp.time, e = Math.min(s + framesToSeconds(6, comp), comp.duration);
+            var name = color==="white" ? "EH_White_Flash" : "EH_Black_Flash";
+            var col  = color==="white" ? [1,1,1] : [0,0,0];
+            var fl = comp.layers.addSolid(col, name, comp.width, comp.height, comp.pixelAspect, e-s);
+            fl.inPoint = s; fl.name = name;
+            var op = fl.property("Transform").property("Opacity");
+            op.setValueAtTime(s, 100); op.setValueAtTime(e, 0);
+            fl.moveToBeginning();
         });
     }
 
-    // ============================================================
-    //  FEATURES — MOTION / ZOOMS
-    // ============================================================
-
-    /**
-     * Generic smooth zoom.
-     * @param {"in"|"out"|"outin"|"inout"} mode
-     *   in    : scale → scale + amount
-     *   out   : scale → scale − amount
-     *   outin : scale → scale − amount → back to scale (punch out-in)
-     *   inout : scale → scale + amount → back to scale (punch in-out)
-     */
     function smoothZoom(mode) {
-        withUndo("Smooth Zoom " + mode, function () {
+        withUndo("Smooth Zoom "+mode, function() {
             var comp = requireActiveComp();
             if (!requireSelection(comp, "Smooth Zoom")) return;
-
-            var amount = settings.zoomAmount / 100;
-            var half   = framesToSeconds(settings.zoomFrames, comp);
-            var t1 = comp.time, t2 = t1 + half, t3 = t2 + half;
-            var selected = getSelectedLayers(comp);
-
-            for (var i = 0; i < selected.length; i++) {
-                var scale = selected[i].property("Transform").property("Scale");
-                var base = scale.value;
-
-                function scaled(factor) {
-                    var v = [];
-                    for (var j = 0; j < base.length; j++) v.push(base[j] * factor);
-                    return v;
-                }
-
-                if (mode === "in") {
-                    scale.setValueAtTime(t1, base);
-                    scale.setValueAtTime(t2, scaled(1 + amount));
-                    easeLastKeys(scale, 2);
-                } else if (mode === "out") {
-                    scale.setValueAtTime(t1, base);
-                    scale.setValueAtTime(t2, scaled(1 - amount));
-                    easeLastKeys(scale, 2);
-                } else if (mode === "outin") {
-                    scale.setValueAtTime(t1, base);
-                    scale.setValueAtTime(t2, scaled(1 - amount));
-                    scale.setValueAtTime(t3, base);
-                    easeLastKeys(scale, 3);
-                } else { // inout
-                    scale.setValueAtTime(t1, base);
-                    scale.setValueAtTime(t2, scaled(1 + amount));
-                    scale.setValueAtTime(t3, base);
-                    easeLastKeys(scale, 3);
-                }
+            var amt = settings.zoomAmount / 100;
+            var half = framesToSeconds(settings.zoomFrames, comp);
+            var t1 = comp.time, t2 = t1+half, t3 = t2+half;
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++) {
+                var scale = sel[i].property("Transform").property("Scale");
+                var b = scale.value;
+                function sc(f) { var v=[]; for(var j=0;j<b.length;j++) v.push(b[j]*f); return v; }
+                if (mode==="in")    { scale.setValueAtTime(t1,b); scale.setValueAtTime(t2,sc(1+amt)); easeLastKeys(scale,2); }
+                else if(mode==="out"){ scale.setValueAtTime(t1,b); scale.setValueAtTime(t2,sc(1-amt)); easeLastKeys(scale,2); }
+                else if(mode==="outin"){ scale.setValueAtTime(t1,b);scale.setValueAtTime(t2,sc(1-amt));scale.setValueAtTime(t3,b); easeLastKeys(scale,3); }
+                else { scale.setValueAtTime(t1,b);scale.setValueAtTime(t2,sc(1+amt));scale.setValueAtTime(t3,b); easeLastKeys(scale,3); }
             }
         });
     }
 
-    /** Legacy wiggle expression on selected layers' Position. */
     function impactShake() {
-        withUndo("Impact Shake", function () {
+        withUndo("Impact Shake", function() {
             var comp = requireActiveComp();
             if (!requireSelection(comp, "Impact Shake")) return;
-            var selected = getSelectedLayers(comp);
-            for (var i = 0; i < selected.length; i++) {
-                selected[i].property("Transform").property("Position").expression = "wiggle(18, 35)";
-            }
+            var sel = getSelectedLayers(comp);
+            for (var i=0;i<sel.length;i++)
+                sel[i].property("Transform").property("Position").expression = "wiggle(18, 35)";
         });
     }
 
-    /**
-     * QUICK SHAKE — non-destructive shake on a dedicated adjustment layer.
-     * Creates an adjustment layer with the native Transform effect and a
-     * wiggle expression on its Position, lasting `durationFrames` from the
-     * current time. The footage below is never touched.
-     * @param {number} freq  wiggle frequency
-     * @param {number} amp   wiggle amplitude (px)
-     * @param {string} label suffix for the layer name
-     */
     function quickShake(freq, amp, label) {
-        withUndo("Quick Shake " + label, function () {
+        withUndo("Quick Shake "+label, function() {
             var comp = requireActiveComp();
-            var durationFrames = 10;
-            var start = comp.time;
-            var end = Math.min(start + framesToSeconds(durationFrames, comp), comp.duration);
-
-            var adj = comp.layers.addSolid([0.5, 0.5, 0.5], "EH_Shake_" + label,
-                comp.width, comp.height, comp.pixelAspect, end - start);
-            adj.adjustmentLayer = true;
-            adj.inPoint = start;
-            adj.name = "EH_Shake_" + label;
-            adj.moveToBeginning();
-
-            // Native Transform effect — shake via its own Position so the
-            // layer transform stays clean.
+            var s = comp.time, e = Math.min(s + framesToSeconds(10,comp), comp.duration);
+            var adj = comp.layers.addSolid([0.5,0.5,0.5],"EH_Shake_"+label,
+                comp.width,comp.height,comp.pixelAspect,e-s);
+            adj.adjustmentLayer=true; adj.inPoint=s; adj.name="EH_Shake_"+label; adj.moveToBeginning();
             var fx = adj.Effects.addProperty("ADBE Geometry2");
-            // Slight scale-up so shaking never reveals comp edges
-            fx.property("ADBE Geometry2-0004").setValue(false); // uniform scale off-switch safety
-            try { fx.property("ADBE Geometry2-0005").setValue(100 + amp / 8); } catch (e) {} // Scale Height
-            try { fx.property("ADBE Geometry2-0006").setValue(100 + amp / 8); } catch (e) {} // Scale Width
-            fx.property("ADBE Geometry2-0002").expression = "wiggle(" + freq + ", " + amp + ")";
+            try { fx.property("ADBE Geometry2-0005").setValue(100+amp/8); } catch(e2){}
+            try { fx.property("ADBE Geometry2-0006").setValue(100+amp/8); } catch(e2){}
+            fx.property("ADBE Geometry2-0002").expression = "wiggle("+freq+", "+amp+")";
         });
     }
 
-    /**
-     * FREEZE FRAME — splits the selected layer at the current time:
-     * the original keeps playing until now, a frozen duplicate (time-remapped
-     * hold) takes over afterwards.
-     */
-    function freezeFrame() {
-        withUndo("Freeze Frame", function () {
-            var comp = requireActiveComp();
-            if (!requireSelection(comp, "Freeze Frame")) return;
-
-            var selected = getSelectedLayers(comp).slice(0); // copy — selection changes on duplicate
-            var t = comp.time;
-
-            for (var i = 0; i < selected.length; i++) {
-                var layer = selected[i];
-                if (t <= layer.inPoint || t >= layer.outPoint) {
-                    alert(SCRIPT_NAME + "\n\nFreeze Frame: place the playhead inside layer \"" + layer.name + "\".");
-                    continue;
-                }
-
-                var frozen = layer.duplicate();
-                frozen.name = layer.name + "_FREEZE";
-
-                // Original plays up to the freeze point
-                layer.outPoint = t;
-
-                // Duplicate holds the frame from the freeze point onward
-                frozen.timeRemapEnabled = true;
-                var tr = frozen.property("ADBE Time Remapping");
-                tr.setValueAtTime(t, tr.valueAtTime(t, false));
-                // Hold interpolation so the frame never moves
-                for (var k = 1; k <= tr.numKeys; k++) {
-                    tr.setInterpolationTypeAtKey(k, KeyframeInterpolationType.HOLD);
-                }
-                frozen.inPoint = t;
-                frozen.outPoint = comp.duration;
-            }
-        });
-    }
-
-    /**
-     * SPEED LINES — anime-style radial speed lines overlay using only
-     * native effects: Fractal Noise (stretched) + Polar Coordinates,
-     * Screen blend mode, animated evolution.
-     */
-    function speedLines() {
-        withUndo("Speed Lines", function () {
-            var comp = requireActiveComp();
-            var start = comp.time;
-            var end = Math.min(start + 2, comp.duration); // 2 s by default, trim as needed
-
-            var solid = comp.layers.addSolid([1, 1, 1], "EH_Speed_Lines",
-                comp.width, comp.height, comp.pixelAspect, end - start);
-            solid.inPoint = start;
-            solid.name = "EH_Speed_Lines";
-            solid.blendingMode = BlendingMode.SCREEN;
-            solid.moveToBeginning();
-
-            // Fractal Noise stretched horizontally → streaks
-            var noise = solid.Effects.addProperty("ADBE Fractal Noise");
-            noise.property("ADBE Fractal Noise-0001").setValue(1);    // Fractal Type: Basic
-            noise.property("ADBE Fractal Noise-0003").setValue(600);  // Contrast
-            noise.property("ADBE Fractal Noise-0004").setValue(-90);  // Brightness
-            // Transform subgroup: disable uniform scaling, stretch width
-            noise.property("ADBE Fractal Noise-0007").setValue(false); // Uniform Scaling
-            noise.property("ADBE Fractal Noise-0009").setValue(2000);  // Scale Width
-            noise.property("ADBE Fractal Noise-0010").setValue(15);    // Scale Height
-            // Animated evolution for movement
-            noise.property("ADBE Fractal Noise-0014").expression = "time * 4000";
-
-            // Polar Coordinates: rect → polar turns streaks into radial lines
-            var polar = solid.Effects.addProperty("ADBE Polar Coordinates");
-            polar.property("ADBE Polar Coordinates-0001").setValue(1);   // Interpolation 100%
-            polar.property("ADBE Polar Coordinates-0002").setValue(2);   // Rect to Polar
-        });
-    }
-
-    // ============================================================
-    //  FEATURES — EFFECTS
-    // ============================================================
-
-    /**
-     * RGB SPLIT v2 — true channel isolation.
-     * Duplicates the selected layer 3×, uses native Shift Channels to keep
-     * only one channel per duplicate, offsets each copy and blends with Add.
-     */
     function rgbSplit() {
-        withUndo("RGB Split", function () {
+        withUndo("RGB Split", function() {
             var comp = requireActiveComp();
-            if (!requireSelection(comp, "RGB Split")) return;
-
-            var source = getSelectedLayers(comp)[0];
-
-            // channel: 1 = Red, 2 = Green, 3 = Blue (Shift Channels popup:
-            // value meanings — 2=Red, 3=Green, 4=Blue, 9=Full Off)
-            function makeChannelDup(name, dx, dy, redV, greenV, blueV) {
-                var dup = source.duplicate();
-                dup.name = name;
-
-                var pos = dup.property("Transform").property("Position");
-                var p = pos.value;
-                var np = [p[0] + dx, p[1] + dy];
-                if (p.length === 3) np.push(p[2]);
-                pos.setValue(np);
-
-                var sc = dup.Effects.addProperty("ADBE Shift Channels");
-                sc.property("ADBE Shift Channels-0002").setValue(redV);   // Take Red From
-                sc.property("ADBE Shift Channels-0003").setValue(greenV); // Take Green From
-                sc.property("ADBE Shift Channels-0004").setValue(blueV);  // Take Blue From
-
-                dup.blendingMode = BlendingMode.ADD;
-                return dup;
+            if (!requireSelection(comp,"RGB Split")) return;
+            var src = getSelectedLayers(comp)[0];
+            function mkDup(name,dx,dy,r,g,b) {
+                var d=src.duplicate(); d.name=name;
+                var p=d.property("Transform").property("Position"), v=p.value;
+                var np=[v[0]+dx,v[1]+dy]; if(v.length===3)np.push(v[2]); p.setValue(np);
+                var sc=d.Effects.addProperty("ADBE Shift Channels");
+                sc.property("ADBE Shift Channels-0002").setValue(r);
+                sc.property("ADBE Shift Channels-0003").setValue(g);
+                sc.property("ADBE Shift Channels-0004").setValue(b);
+                d.blendingMode=BlendingMode.ADD;
             }
-
-            // 10 = Full Off in the Shift Channels dropdown
-            var OFF = 10, R = 2, G = 3, B = 4;
-            makeChannelDup("EH_RGB_Blue",  0,  4, OFF, OFF, B);
-            makeChannelDup("EH_RGB_Green", -4, 0, OFF, G, OFF);
-            makeChannelDup("EH_RGB_Red",   4,  0, R, OFF, OFF);
-
-            // Hide the source so only the three channel copies are visible
-            source.enabled = false;
+            var OFF=10,R=2,G=3,B=4;
+            mkDup("EH_RGB_Blue",  0, 4,OFF,OFF,B);
+            mkDup("EH_RGB_Green",-4, 0,OFF,G,OFF);
+            mkDup("EH_RGB_Red",   4, 0,R,OFF,OFF);
+            src.enabled=false;
         });
     }
 
     function glowBoost() {
-        withUndo("Glow Boost", function () {
+        withUndo("Glow Boost", function() {
             var comp = requireActiveComp();
-            if (!requireSelection(comp, "Glow Boost")) return;
-            var selected = getSelectedLayers(comp);
-            for (var i = 0; i < selected.length; i++) {
-                var glow = selected[i].Effects.addProperty("ADBE Glow");
-                glow.property("ADBE Glow-0001").setValue(0.6); // Threshold 60%
-                glow.property("ADBE Glow-0002").setValue(35);  // Radius
-                glow.property("ADBE Glow-0003").setValue(1.5); // Intensity
+            if (!requireSelection(comp,"Glow Boost")) return;
+            var sel = getSelectedLayers(comp);
+            for(var i=0;i<sel.length;i++){
+                var g=sel[i].Effects.addProperty("ADBE Glow");
+                g.property("ADBE Glow-0001").setValue(0.6);
+                g.property("ADBE Glow-0002").setValue(35);
+                g.property("ADBE Glow-0003").setValue(1.5);
             }
         });
     }
 
-    // ============================================================
-    //  FEATURES — PROJECT
-    // ============================================================
+    function freezeFrame() {
+        withUndo("Freeze Frame", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp,"Freeze Frame")) return;
+            var sel = getSelectedLayers(comp).slice(0), t = comp.time;
+            for(var i=0;i<sel.length;i++){
+                var layer=sel[i];
+                if(t<=layer.inPoint||t>=layer.outPoint){
+                    alert(SCRIPT_NAME+"\n\nFreeze Frame : placez la tête de lecture dans le calque \""+layer.name+"\".");
+                    continue;
+                }
+                var frozen=layer.duplicate(); frozen.name=layer.name+"_FREEZE";
+                layer.outPoint=t;
+                frozen.timeRemapEnabled=true;
+                var tr=frozen.property("ADBE Time Remapping");
+                tr.setValueAtTime(t, tr.valueAtTime(t,false));
+                for(var k=1;k<=tr.numKeys;k++)
+                    tr.setInterpolationTypeAtKey(k,KeyframeInterpolationType.HOLD);
+                frozen.inPoint=t; frozen.outPoint=comp.duration;
+            }
+        });
+    }
+
+    function speedLines() {
+        withUndo("Speed Lines", function() {
+            var comp = requireActiveComp();
+            var s=comp.time, e=Math.min(s+2,comp.duration);
+            var solid=comp.layers.addSolid([1,1,1],"EH_Speed_Lines",comp.width,comp.height,comp.pixelAspect,e-s);
+            solid.inPoint=s; solid.name="EH_Speed_Lines"; solid.blendingMode=BlendingMode.SCREEN; solid.moveToBeginning();
+            var n=solid.Effects.addProperty("ADBE Fractal Noise");
+            n.property("ADBE Fractal Noise-0001").setValue(1);
+            n.property("ADBE Fractal Noise-0003").setValue(600);
+            n.property("ADBE Fractal Noise-0004").setValue(-90);
+            n.property("ADBE Fractal Noise-0007").setValue(false);
+            n.property("ADBE Fractal Noise-0009").setValue(2000);
+            n.property("ADBE Fractal Noise-0010").setValue(15);
+            n.property("ADBE Fractal Noise-0014").expression="time * 4000";
+            var p=solid.Effects.addProperty("ADBE Polar Coordinates");
+            p.property("ADBE Polar Coordinates-0001").setValue(1);
+            p.property("ADBE Polar Coordinates-0002").setValue(2);
+        });
+    }
 
     function autoPrecompSelected() {
-        withUndo("Auto Precomp Selected", function () {
+        withUndo("Auto Precomp", function() {
             var comp = requireActiveComp();
-            if (!requireSelection(comp, "Auto Precomp")) return;
-            var selected = getSelectedLayers(comp);
-            var idxs = [];
-            for (var i = 0; i < selected.length; i++) idxs.push(selected[i].index);
+            if (!requireSelection(comp,"Auto Precomp")) return;
+            var sel=getSelectedLayers(comp), idxs=[];
+            for(var i=0;i<sel.length;i++) idxs.push(sel[i].index);
             comp.layers.precompose(idxs, getUniqueCompName("EH_Precomp_01"), true);
         });
     }
 
     function organizeProject() {
-        withUndo("Organize Project", function () {
-            var folders = {
-                comps    : createFolderIfMissing("01_Comps"),
-                footage  : createFolderIfMissing("02_Footage"),
-                audio    : createFolderIfMissing("03_Audio"),
-                precomps : createFolderIfMissing("04_Precomps"),
-                solids   : createFolderIfMissing("05_Solids")
-            };
-
-            var items = [];
-            for (var i = 1; i <= app.project.items.length; i++) items.push(app.project.items[i]);
-
-            for (var j = 0; j < items.length; j++) {
-                var item = items[j];
-                if (item instanceof FolderItem) continue;
-
-                if (item instanceof CompItem) {
-                    var isPre = item.name.toLowerCase().indexOf("precomp") !== -1;
-                    item.parentFolder = isPre ? folders.precomps : folders.comps;
-                } else if (item instanceof FootageItem) {
-                    if (item.mainSource instanceof SolidSource) {
-                        item.parentFolder = folders.solids;
-                    } else if (item.mainSource instanceof FileSource) {
-                        var isAudio = item.name.toLowerCase().match(/\.(mp3|wav|aac|aif|aiff|m4a|ogg|flac)$/) !== null;
-                        item.parentFolder = isAudio ? folders.audio : folders.footage;
+        withUndo("Organize Project", function() {
+            var f={ comps:createFolderIfMissing("01_Comps"),footage:createFolderIfMissing("02_Footage"),
+                    audio:createFolderIfMissing("03_Audio"),precomps:createFolderIfMissing("04_Precomps"),
+                    solids:createFolderIfMissing("05_Solids") };
+            var items=[];
+            for(var i=1;i<=app.project.items.length;i++) items.push(app.project.items[i]);
+            for(var j=0;j<items.length;j++){
+                var item=items[j]; if(item instanceof FolderItem) continue;
+                if(item instanceof CompItem){
+                    item.parentFolder=(item.name.toLowerCase().indexOf("precomp")!==-1)?f.precomps:f.comps;
+                } else if(item instanceof FootageItem){
+                    if(item.mainSource instanceof SolidSource) item.parentFolder=f.solids;
+                    else if(item.mainSource instanceof FileSource){
+                        item.parentFolder=item.name.toLowerCase().match(/\.(mp3|wav|aac|aif|aiff|m4a|ogg|flac)$/)
+                            ? f.audio : f.footage;
                     }
                 }
             }
-            alert(SCRIPT_NAME + "\n\nProject organized successfully.");
+            alert(SCRIPT_NAME+"\n\nProjet organisé avec succès.");
         });
     }
 
     // ============================================================
-    //  ICON DRAWING (vector, theme-aware — SVG-equivalent)
-    //  Each icon is a function(gfx, pen, brush, s) drawing in an s×s box.
+    //  FEATURES — TEXT ANIMATIONS
+    // ============================================================
+
+    /**
+     * Helper: get the text animators property group on a text layer.
+     * Returns null if the layer is not a text layer.
+     */
+    function getTextAnimators(layer) {
+        try {
+            var tp = layer.property("ADBE Text Properties");
+            return tp ? tp.property("ADBE Text Animators") : null;
+        } catch(e) { return null; }
+    }
+
+    /**
+     * Builds a Range Selector + Opacity animator on a text layer.
+     * animValue: the "hidden" opacity value (0 = chars start invisible).
+     * Animates the selector End: 0% → 100% over `durationFrames`.
+     */
+    function applyTextOpacityReveal(layer, animName, fromOpac, durationFrames) {
+        var comp = layer.containingComp;
+        var anims = getTextAnimators(layer);
+        if (!anims) throw new Error("Sélectionnez un calque de texte.");
+
+        var anim = anims.addProperty("ADBE Text Animator");
+        anim.name = animName;
+
+        // Opacity property
+        var props = anim.property("ADBE Text Animator Properties");
+        var op = props.addProperty("ADBE Text Opacity");
+        op.setValue(fromOpac);
+
+        // Range selector
+        var sels  = anim.property("ADBE Text Selectors");
+        var sel   = sels.addProperty("ADBE Text Selector");
+        // Based on: Characters
+        try { sel.property("ADBE Text Range Units").setValue(1); } catch(e) {}
+
+        var t1 = comp.time, t2 = t1 + framesToSeconds(durationFrames, comp);
+        var endProp = sel.property("ADBE Text Selector End");
+        endProp.setValueAtTime(t1, 0);
+        endProp.setValueAtTime(t2, 100);
+        easeLastKeys(endProp, 2);
+        return anim;
+    }
+
+    /** 1. Typewriter — characters appear one by one (opacity reveal, char mode). */
+    function textTypewriter() {
+        withUndo("Text: Typewriter", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Typewriter")) return;
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++)
+                applyTextOpacityReveal(sel[i], "EH_Typewriter", 0, 24);
+        });
+    }
+
+    /**
+     * 2. Fade Up — characters fade in from below (opacity + Y offset).
+     * durationFrames covers the full reveal.
+     */
+    function textFadeUp() {
+        withUndo("Text: Fade Up", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Fade Up")) return;
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++) {
+                var layer = sel[i];
+                var anims = getTextAnimators(layer);
+                if (!anims) { alert(SCRIPT_NAME+"\n\nFade Up : \""+layer.name+"\" n'est pas un calque de texte."); continue; }
+
+                var anim  = anims.addProperty("ADBE Text Animator");
+                anim.name = "EH_FadeUp";
+                var props = anim.property("ADBE Text Animator Properties");
+
+                // Y offset: +40 px (below)
+                var pos = props.addProperty("ADBE Text Position");
+                pos.setValue([0, 40]);
+                // Opacity: 0%
+                var op = props.addProperty("ADBE Text Opacity");
+                op.setValue(0);
+
+                var sels = anim.property("ADBE Text Selectors");
+                var sel2 = sels.addProperty("ADBE Text Selector");
+                try { sel2.property("ADBE Text Range Units").setValue(3); } catch(e) {} // Words
+
+                var t1 = comp.time, t2 = t1 + framesToSeconds(18, comp);
+                var endProp = sel2.property("ADBE Text Selector End");
+                endProp.setValueAtTime(t1, 0);
+                endProp.setValueAtTime(t2, 100);
+                easeLastKeys(endProp, 2);
+            }
+        });
+    }
+
+    /**
+     * 3. Bounce In — characters scale from 0 → 120 → 100 % (two keyframes on Scale).
+     * Uses a text Scale animator; the bounce is baked in keyframes.
+     */
+    function textBounceIn() {
+        withUndo("Text: Bounce In", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Bounce In")) return;
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++) {
+                var layer = sel[i];
+                var anims = getTextAnimators(layer);
+                if (!anims) { alert(SCRIPT_NAME+"\n\nBounce In : \""+layer.name+"\" n'est pas un calque de texte."); continue; }
+
+                var anim  = anims.addProperty("ADBE Text Animator");
+                anim.name = "EH_BounceIn";
+                var props = anim.property("ADBE Text Animator Properties");
+
+                var scProp = props.addProperty("ADBE Text Scale");
+                var opProp = props.addProperty("ADBE Text Opacity");
+                opProp.setValue(0);
+
+                var sels = anim.property("ADBE Text Selectors");
+                var sel2 = sels.addProperty("ADBE Text Selector");
+                try { sel2.property("ADBE Text Range Units").setValue(1); } catch(e) {} // Chars
+
+                var t1 = comp.time;
+                var t2 = t1 + framesToSeconds(8, comp);
+                var t3 = t1 + framesToSeconds(14, comp);
+
+                // End: 0→100 as chars enter
+                var endProp = sel2.property("ADBE Text Selector End");
+                endProp.setValueAtTime(t1, 0);
+                endProp.setValueAtTime(t3, 100);
+                easeLastKeys(endProp, 2);
+
+                // Scale overshoots: 0 → 120 → 100 (using non-uniform values)
+                scProp.setValueAtTime(t1, [0, 0]);
+                scProp.setValueAtTime(t2, [120, 120]);
+                scProp.setValueAtTime(t3, [100, 100]);
+                easeLastKeys(scProp, 3);
+            }
+        });
+    }
+
+    /**
+     * 4. Glitch — rapid position jitter via wiggle expression on the selector offset,
+     * combined with opacity flicker.
+     */
+    function textGlitch() {
+        withUndo("Text: Glitch", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Glitch")) return;
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++) {
+                var layer = sel[i];
+                var anims = getTextAnimators(layer);
+                if (!anims) { alert(SCRIPT_NAME+"\n\nGlitch : \""+layer.name+"\" n'est pas un calque de texte."); continue; }
+
+                var anim  = anims.addProperty("ADBE Text Animator");
+                anim.name = "EH_Glitch";
+                var props = anim.property("ADBE Text Animator Properties");
+
+                var posProp = props.addProperty("ADBE Text Position");
+                posProp.expression = "var r=wiggle(30,8); [r[0], r[1]];";
+
+                var opProp = props.addProperty("ADBE Text Opacity");
+                opProp.expression = "var t=Math.floor(time*24)%3; t===0?0:100;";
+
+                var sels = anim.property("ADBE Text Selectors");
+                var sel2 = sels.addProperty("ADBE Text Selector");
+                try { sel2.property("ADBE Text Range Units").setValue(1); } catch(e) {}
+                // Wiggly selector: random per character
+                sel2.property("ADBE Text Selector End").setValue(100);
+                try { sel2.property("ADBE Text Selector Shape").setValue(5); } catch(e) {} // Ramp Up
+            }
+        });
+    }
+
+    /** 5. Slide From Left — position X offset from -200 → 0. */
+    function textSlide(direction) {
+        withUndo("Text: Slide "+direction, function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Slide")) return;
+            var dx = direction==="left" ? -200 : (direction==="right" ? 200 : 0);
+            var dy = direction==="top"  ? -60  : (direction==="bottom" ? 60  : 0);
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++) {
+                var layer = sel[i];
+                var anims = getTextAnimators(layer);
+                if (!anims) { alert(SCRIPT_NAME+"\n\nSlide : \""+layer.name+"\" n'est pas un calque de texte."); continue; }
+
+                var anim  = anims.addProperty("ADBE Text Animator");
+                anim.name = "EH_Slide_"+direction;
+                var props = anim.property("ADBE Text Animator Properties");
+
+                var pos = props.addProperty("ADBE Text Position");
+                pos.setValue([dx, dy]);
+                var op = props.addProperty("ADBE Text Opacity");
+                op.setValue(0);
+
+                var sels = anim.property("ADBE Text Selectors");
+                var sel2 = sels.addProperty("ADBE Text Selector");
+                try { sel2.property("ADBE Text Range Units").setValue(4); } catch(e) {} // Lines
+
+                var t1=comp.time, t2=t1+framesToSeconds(16,comp);
+                var ep = sel2.property("ADBE Text Selector End");
+                ep.setValueAtTime(t1,0); ep.setValueAtTime(t2,100);
+                easeLastKeys(ep,2);
+            }
+        });
+    }
+
+    /** 6. Word Reveal — word by word opacity reveal (elegant for titles). */
+    function textWordReveal() {
+        withUndo("Text: Word Reveal", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Word Reveal")) return;
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++)
+                applyTextOpacityReveal(sel[i], "EH_WordReveal", 0, 20);
+        });
+    }
+
+    // ============================================================
+    //  FEATURES — SOUND BANK
+    // ============================================================
+
+    function getSoundFiles() {
+        if (!settings.soundFolder) return [];
+        var folder = new Folder(settings.soundFolder);
+        if (!folder.exists) return [];
+        var files = folder.getFiles(/\.(wav|mp3|aif|aiff|m4a|ogg|flac)$/i);
+        return files || [];
+    }
+
+    function addSoundToComp(filePath) {
+        withUndo("Add Sound", function() {
+            var comp = requireActiveComp();
+            var file = new File(filePath);
+            if (!file.exists) { alert(SCRIPT_NAME+"\n\nFichier introuvable :\n"+filePath); return; }
+
+            // Re-use already imported footage if available
+            var footage = null;
+            for (var i=1; i<=app.project.items.length; i++) {
+                var item = app.project.items[i];
+                if (item instanceof FootageItem && item.mainSource instanceof FileSource
+                    && item.mainSource.file && item.mainSource.file.fsName === file.fsName) {
+                    footage = item; break;
+                }
+            }
+            if (!footage) footage = app.project.importFile(new ImportOptions(file));
+
+            var layer = comp.layers.add(footage);
+            layer.inPoint  = comp.time;
+            layer.outPoint = Math.min(comp.time + footage.duration, comp.duration);
+
+            // Move to audio folder if it exists
+            try { footage.parentFolder = createFolderIfMissing("03_Audio"); } catch(e) {}
+        });
+    }
+
+    // ============================================================
+    //  FEATURES — OVERLAYS
+    // ============================================================
+
+    /** Helper: add an adjustment layer solid for overlays. */
+    function addOverlayAdj(comp, name, dur) {
+        var s = comp.time;
+        var e = Math.min(s + (dur || comp.duration - s), comp.duration);
+        var adj = comp.layers.addSolid([0.5,0.5,0.5], name,
+            comp.width, comp.height, comp.pixelAspect, e - s);
+        adj.adjustmentLayer = true;
+        adj.inPoint = s; adj.name = name;
+        adj.moveToBeginning();
+        return adj;
+    }
+
+    /** Helper: add a plain solid for blend-mode overlays. */
+    function addOverlaySolid(comp, name, color, blendMode, dur) {
+        var s = comp.time;
+        var e = Math.min(s + (dur || comp.duration - s), comp.duration);
+        var solid = comp.layers.addSolid(color, name,
+            comp.width, comp.height, comp.pixelAspect, e - s);
+        solid.inPoint = s; solid.name = name;
+        solid.blendingMode = blendMode;
+        solid.moveToBeginning();
+        return solid;
+    }
+
+    /** 1. Film Grain — Add Grain effect on adjustment layer. */
+    function overlayFilmGrain() {
+        withUndo("Overlay: Film Grain", function() {
+            var comp = requireActiveComp();
+            var adj = addOverlayAdj(comp, "EH_FilmGrain");
+            var fg = adj.Effects.addProperty("ADBE Add Grain");
+            try { fg.property("ADBE Grain-intensity").setValue(0.4); } catch(e){}   // Intensity
+            try { fg.property("ADBE Grain-size").setValue(1.2);      } catch(e){}   // Size
+            try { fg.property("ADBE Grain-color").setValue(0);        } catch(e){}   // Monochrome
+        });
+    }
+
+    /** 2. Vignette — dark ellipse solid with feathered mask. */
+    function overlayVignette() {
+        withUndo("Overlay: Vignette", function() {
+            var comp = requireActiveComp();
+            var solid = addOverlaySolid(comp, "EH_Vignette", [0,0,0], BlendingMode.MULTIPLY);
+            // Inverted ellipse mask (the solid shows outside the ellipse)
+            var mask = solid.Masks.addProperty("Mask");
+            var w = comp.width, h = comp.height;
+            var shape = new Shape();
+            // Ellipse path approximated with 4 bezier vertices
+            var rx = w * 0.48, ry = h * 0.45;
+            var cx = w / 2, cy = h / 2;
+            var k = 0.5523;
+            shape.vertices  = [[cx-rx,cy],[cx,cy-ry],[cx+rx,cy],[cx,cy+ry]];
+            shape.inTangents  = [[0, rx*k],[-ry*k,0],[0,-rx*k],[ry*k,0]];
+            shape.outTangents = [[0,-rx*k],[ry*k,0],[0, rx*k],[-ry*k,0]];
+            shape.closed = true;
+            mask.property("ADBE Mask Shape").setValue(shape);
+            mask.property("ADBE Mask Feather").setValue([w*0.25, w*0.25]);
+            mask.property("ADBE Mask Opacity").setValue(80);
+            mask.inverted = true;
+        });
+    }
+
+    /** 3. Light Leak — warm Fractal Noise on solid in Add mode, animated. */
+    function overlayLightLeak() {
+        withUndo("Overlay: Light Leak", function() {
+            var comp = requireActiveComp();
+            // Warm amber solid
+            var solid = addOverlaySolid(comp, "EH_LightLeak", [1,0.7,0.2], BlendingMode.ADD);
+            solid.adjustmentLayer = false;
+            solid.property("Transform").property("Opacity").setValue(60);
+
+            var noise = solid.Effects.addProperty("ADBE Fractal Noise");
+            noise.property("ADBE Fractal Noise-0001").setValue(3); // Turbulent Smooth
+            noise.property("ADBE Fractal Noise-0007").setValue(false);
+            noise.property("ADBE Fractal Noise-0009").setValue(300);
+            noise.property("ADBE Fractal Noise-0010").setValue(200);
+            noise.property("ADBE Fractal Noise-0014").expression = "time * 0.8";
+
+            // Subtle pan across the frame
+            var pos = solid.property("Transform").property("Position");
+            var t1 = comp.time, t2 = Math.min(t1 + 3, comp.duration);
+            pos.setValueAtTime(t1, [0, comp.height/2]);
+            pos.setValueAtTime(t2, [comp.width, comp.height/2]);
+            easeLastKeys(pos, 2);
+        });
+    }
+
+    /** 4. VHS — Wave Warp + Noise + slight desaturation on adjustment layer. */
+    function overlayVHS() {
+        withUndo("Overlay: VHS", function() {
+            var comp = requireActiveComp();
+            var adj = addOverlayAdj(comp, "EH_VHS");
+
+            // Horizontal warp
+            var warp = adj.Effects.addProperty("ADBE Wave Warp");
+            warp.property("ADBE Wave Warp-0001").setValue(3);  // Wave Type: Sine
+            warp.property("ADBE Wave Warp-0002").setValue(1);   // Wave Height
+            warp.property("ADBE Wave Warp-0003").setValue(comp.width); // Wave Width (full)
+            warp.property("ADBE Wave Warp-0004").setValue(90); // Direction: horizontal
+            warp.property("ADBE Wave Warp-0006").setValue(1);   // Wave Speed
+
+            // Noise
+            var noise = adj.Effects.addProperty("ADBE Noise");
+            try { noise.property("ADBE Noise-0001").setValue(8);  } catch(e){} // Amount
+            try { noise.property("ADBE Noise-0002").setValue(true); } catch(e){} // Use Color Noise off
+
+            // Slight desaturation via Hue/Sat
+            var hs = adj.Effects.addProperty("ADBE HUE SATURATION");
+            try { hs.property("ADBE HUE SATURATION-0002").setValue(-30); } catch(e){} // Saturation
+        });
+    }
+
+    /**
+     * 5. Scanlines — horizontal lines overlay via Grid effect on a Screen solid.
+     * Uses the native "ADBE Grid" (Grid) effect.
+     */
+    function overlayScanlines() {
+        withUndo("Overlay: Scanlines", function() {
+            var comp = requireActiveComp();
+            var solid = addOverlaySolid(comp, "EH_Scanlines", [0,0,0], BlendingMode.MULTIPLY);
+            solid.adjustmentLayer = false;
+            solid.property("Transform").property("Opacity").setValue(30);
+
+            var grid = solid.Effects.addProperty("ADBE Grid");
+            try {
+                // Size from: Width Slider
+                grid.property("ADBE Grid-0002").setValue(2); // Size from (width slider)
+                grid.property("ADBE Grid-0004").setValue(comp.width); // Width
+                grid.property("ADBE Grid-0005").setValue(4);  // Height (line spacing)
+                grid.property("ADBE Grid-0006").setValue(1);  // Border
+                grid.property("ADBE Grid-0007").setValue([0,0,0,1]); // Color: black
+            } catch(e) {}
+        });
+    }
+
+    /**
+     * 6. Lens Flare — native Lens Flare effect on a solid in Add blend.
+     * Centers the flare; can be repositioned in the timeline.
+     */
+    function overlayLensFlare() {
+        withUndo("Overlay: Lens Flare", function() {
+            var comp = requireActiveComp();
+            var solid = addOverlaySolid(comp, "EH_LensFlare", [0,0,0], BlendingMode.ADD);
+            solid.adjustmentLayer = false;
+
+            var lf = solid.Effects.addProperty("ADBE Lens Flare");
+            try {
+                lf.property("ADBE Lens Flare-0001").setValue([comp.width/2, comp.height/2]);
+                lf.property("ADBE Lens Flare-0002").setValue(100); // Brightness
+                lf.property("ADBE Lens Flare-0003").setValue(1);   // Lens type: 105mm Prime
+            } catch(e) {}
+
+            solid.property("Transform").property("Opacity").setValue(80);
+        });
+    }
+
+    /** 7. Dust & Scratches — high-contrast Fractal Noise in Screen mode. */
+    function overlayDust() {
+        withUndo("Overlay: Dust & Scratches", function() {
+            var comp = requireActiveComp();
+            var solid = addOverlaySolid(comp, "EH_Dust", [1,1,1], BlendingMode.SCREEN);
+            solid.adjustmentLayer = false;
+            solid.property("Transform").property("Opacity").setValue(25);
+
+            var noise = solid.Effects.addProperty("ADBE Fractal Noise");
+            noise.property("ADBE Fractal Noise-0001").setValue(6); // Max
+            noise.property("ADBE Fractal Noise-0003").setValue(700); // Contrast
+            noise.property("ADBE Fractal Noise-0004").setValue(-200); // Brightness
+            noise.property("ADBE Fractal Noise-0007").setValue(false);
+            noise.property("ADBE Fractal Noise-0009").setValue(3);   // Very narrow
+            noise.property("ADBE Fractal Noise-0010").setValue(comp.height);
+            noise.property("ADBE Fractal Noise-0014").expression = "time * 8000";
+        });
+    }
+
+    /** 8. Color Tint — Tint effect (map black/white to two colors) on adj layer. */
+    function overlayColorTint(blackCol, whiteCol, label) {
+        withUndo("Overlay: Color Tint "+label, function() {
+            var comp = requireActiveComp();
+            var adj = addOverlayAdj(comp, "EH_Tint_"+label);
+            var tint = adj.Effects.addProperty("ADBE Tint");
+            try {
+                tint.property("ADBE Tint-0002").setValue(blackCol);  // Map Black To
+                tint.property("ADBE Tint-0003").setValue(whiteCol);  // Map White To
+                tint.property("ADBE Tint-0004").setValue(60);        // Amount (blend)
+            } catch(e) {}
+        });
+    }
+
+    // ============================================================
+    //  ICON DRAWING  (same approach as v0.2, extended)
     // ============================================================
 
     var ICONS = {
-        adjustment: function (g, x, y, s, pen) { // half-filled circle
-            g.newPath(); g.ellipsePath(x, y, s, s); g.strokePath(pen);
-            g.newPath(); g.moveTo(x + s / 2, y); g.lineTo(x + s / 2, y + s); g.strokePath(pen);
-        },
-        flash: function (g, x, y, s, pen) { // lightning bolt
-            g.newPath();
-            g.moveTo(x + s * 0.6, y);
-            g.lineTo(x + s * 0.2, y + s * 0.55);
-            g.lineTo(x + s * 0.5, y + s * 0.55);
-            g.lineTo(x + s * 0.4, y + s);
-            g.lineTo(x + s * 0.8, y + s * 0.4);
-            g.lineTo(x + s * 0.5, y + s * 0.4);
-            g.closePath();
-            g.strokePath(pen);
-        },
-        shake: function (g, x, y, s, pen) { // zigzag
-            g.newPath();
-            g.moveTo(x, y + s * 0.5);
-            g.lineTo(x + s * 0.25, y + s * 0.15);
-            g.lineTo(x + s * 0.5, y + s * 0.85);
-            g.lineTo(x + s * 0.75, y + s * 0.15);
-            g.lineTo(x + s, y + s * 0.5);
-            g.strokePath(pen);
-        },
-        zoomIn: function (g, x, y, s, pen) { // magnifier with +
-            g.newPath(); g.ellipsePath(x, y, s * 0.7, s * 0.7); g.strokePath(pen);
-            g.newPath(); g.moveTo(x + s * 0.6, y + s * 0.6); g.lineTo(x + s, y + s); g.strokePath(pen);
-            g.newPath(); g.moveTo(x + s * 0.2, y + s * 0.35); g.lineTo(x + s * 0.5, y + s * 0.35); g.strokePath(pen);
-            g.newPath(); g.moveTo(x + s * 0.35, y + s * 0.2); g.lineTo(x + s * 0.35, y + s * 0.5); g.strokePath(pen);
-        },
-        zoomOut: function (g, x, y, s, pen) { // magnifier with −
-            g.newPath(); g.ellipsePath(x, y, s * 0.7, s * 0.7); g.strokePath(pen);
-            g.newPath(); g.moveTo(x + s * 0.6, y + s * 0.6); g.lineTo(x + s, y + s); g.strokePath(pen);
-            g.newPath(); g.moveTo(x + s * 0.2, y + s * 0.35); g.lineTo(x + s * 0.5, y + s * 0.35); g.strokePath(pen);
-        },
-        punch: function (g, x, y, s, pen) { // double arrows out-in
-            g.newPath();
-            g.moveTo(x, y + s * 0.5); g.lineTo(x + s * 0.35, y + s * 0.5);
-            g.moveTo(x + s * 0.25, y + s * 0.3); g.lineTo(x + s * 0.35, y + s * 0.5); g.lineTo(x + s * 0.25, y + s * 0.7);
-            g.moveTo(x + s, y + s * 0.5); g.lineTo(x + s * 0.65, y + s * 0.5);
-            g.moveTo(x + s * 0.75, y + s * 0.3); g.lineTo(x + s * 0.65, y + s * 0.5); g.lineTo(x + s * 0.75, y + s * 0.7);
-            g.strokePath(pen);
-        },
-        rgb: function (g, x, y, s, pen) { // three overlapping circles
-            g.newPath(); g.ellipsePath(x, y + s * 0.15, s * 0.6, s * 0.6); g.strokePath(pen);
-            g.newPath(); g.ellipsePath(x + s * 0.4, y + s * 0.15, s * 0.6, s * 0.6); g.strokePath(pen);
-            g.newPath(); g.ellipsePath(x + s * 0.2, y + s * 0.4, s * 0.6, s * 0.6); g.strokePath(pen);
-        },
-        glow: function (g, x, y, s, pen) { // sun
-            g.newPath(); g.ellipsePath(x + s * 0.25, y + s * 0.25, s * 0.5, s * 0.5); g.strokePath(pen);
-            var c = [[0.5, 0, 0.5, 0.15], [0.5, 0.85, 0.5, 1], [0, 0.5, 0.15, 0.5], [0.85, 0.5, 1, 0.5]];
-            for (var i = 0; i < c.length; i++) {
-                g.newPath();
-                g.moveTo(x + s * c[i][0], y + s * c[i][1]);
-                g.lineTo(x + s * c[i][2], y + s * c[i][3]);
-                g.strokePath(pen);
-            }
-        },
-        freeze: function (g, x, y, s, pen) { // pause bars in frame
-            g.newPath(); g.rectPath(x, y, s, s); g.strokePath(pen);
-            g.newPath(); g.moveTo(x + s * 0.35, y + s * 0.25); g.lineTo(x + s * 0.35, y + s * 0.75); g.strokePath(pen);
-            g.newPath(); g.moveTo(x + s * 0.65, y + s * 0.25); g.lineTo(x + s * 0.65, y + s * 0.75); g.strokePath(pen);
-        },
-        lines: function (g, x, y, s, pen) { // radial speed lines
-            var c = [[0, 0], [s, 0], [0, s], [s, s], [s * 0.5, 0], [0, s * 0.5], [s, s * 0.5], [s * 0.5, s]];
-            for (var i = 0; i < c.length; i++) {
-                g.newPath();
-                var mx = x + s * 0.5 + (c[i][0] - s * 0.5) * 0.45;
-                var my = y + s * 0.5 + (c[i][1] - s * 0.5) * 0.45;
-                g.moveTo(mx, my); g.lineTo(x + c[i][0], y + c[i][1]);
-                g.strokePath(pen);
-            }
-        },
-        precomp: function (g, x, y, s, pen) { // nested boxes
-            g.newPath(); g.rectPath(x, y + s * 0.2, s * 0.8, s * 0.8); g.strokePath(pen);
-            g.newPath(); g.rectPath(x + s * 0.2, y, s * 0.8, s * 0.8); g.strokePath(pen);
-        },
-        folder: function (g, x, y, s, pen) { // folder
-            g.newPath();
-            g.moveTo(x, y + s * 0.25);
-            g.lineTo(x + s * 0.35, y + s * 0.25);
-            g.lineTo(x + s * 0.45, y + s * 0.4);
-            g.lineTo(x + s, y + s * 0.4);
-            g.lineTo(x + s, y + s);
-            g.lineTo(x, y + s);
-            g.closePath();
-            g.strokePath(pen);
-        },
-        gear: function (g, x, y, s, pen) { // settings gear (simplified)
-            g.newPath(); g.ellipsePath(x + s * 0.25, y + s * 0.25, s * 0.5, s * 0.5); g.strokePath(pen);
-            var t = [[0.5, 0, 0.5, 0.2], [0.5, 0.8, 0.5, 1], [0, 0.5, 0.2, 0.5], [0.8, 0.5, 1, 0.5]];
-            for (var i = 0; i < t.length; i++) {
-                g.newPath();
-                g.moveTo(x + s * t[i][0], y + s * t[i][1]);
-                g.lineTo(x + s * t[i][2], y + s * t[i][3]);
-                g.strokePath(pen);
-            }
-        }
+        adjustment:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s,s);g.strokePath(p);g.newPath();g.moveTo(x+s/2,y);g.lineTo(x+s/2,y+s);g.strokePath(p);},
+        flash:function(g,x,y,s,p){g.newPath();g.moveTo(x+s*.6,y);g.lineTo(x+s*.2,y+s*.55);g.lineTo(x+s*.5,y+s*.55);g.lineTo(x+s*.4,y+s);g.lineTo(x+s*.8,y+s*.4);g.lineTo(x+s*.5,y+s*.4);g.closePath();g.strokePath(p);},
+        shake:function(g,x,y,s,p){g.newPath();g.moveTo(x,y+s*.5);g.lineTo(x+s*.25,y+s*.15);g.lineTo(x+s*.5,y+s*.85);g.lineTo(x+s*.75,y+s*.15);g.lineTo(x+s,y+s*.5);g.strokePath(p);},
+        zoomIn:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s*.7,s*.7);g.strokePath(p);g.newPath();g.moveTo(x+s*.6,y+s*.6);g.lineTo(x+s,y+s);g.strokePath(p);g.newPath();g.moveTo(x+s*.2,y+s*.35);g.lineTo(x+s*.5,y+s*.35);g.strokePath(p);g.newPath();g.moveTo(x+s*.35,y+s*.2);g.lineTo(x+s*.35,y+s*.5);g.strokePath(p);},
+        zoomOut:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s*.7,s*.7);g.strokePath(p);g.newPath();g.moveTo(x+s*.6,y+s*.6);g.lineTo(x+s,y+s);g.strokePath(p);g.newPath();g.moveTo(x+s*.2,y+s*.35);g.lineTo(x+s*.5,y+s*.35);g.strokePath(p);},
+        punch:function(g,x,y,s,p){g.newPath();g.moveTo(x,y+s*.5);g.lineTo(x+s*.35,y+s*.5);g.moveTo(x+s*.25,y+s*.3);g.lineTo(x+s*.35,y+s*.5);g.lineTo(x+s*.25,y+s*.7);g.moveTo(x+s,y+s*.5);g.lineTo(x+s*.65,y+s*.5);g.moveTo(x+s*.75,y+s*.3);g.lineTo(x+s*.65,y+s*.5);g.lineTo(x+s*.75,y+s*.7);g.strokePath(p);},
+        rgb:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y+s*.15,s*.6,s*.6);g.strokePath(p);g.newPath();g.ellipsePath(x+s*.4,y+s*.15,s*.6,s*.6);g.strokePath(p);g.newPath();g.ellipsePath(x+s*.2,y+s*.4,s*.6,s*.6);g.strokePath(p);},
+        glow:function(g,x,y,s,p){g.newPath();g.ellipsePath(x+s*.25,y+s*.25,s*.5,s*.5);g.strokePath(p);var c=[[.5,0,.5,.15],[.5,.85,.5,1],[0,.5,.15,.5],[.85,.5,1,.5]];for(var i=0;i<c.length;i++){g.newPath();g.moveTo(x+s*c[i][0],y+s*c[i][1]);g.lineTo(x+s*c[i][2],y+s*c[i][3]);g.strokePath(p);}},
+        freeze:function(g,x,y,s,p){g.newPath();g.rectPath(x,y,s,s);g.strokePath(p);g.newPath();g.moveTo(x+s*.35,y+s*.25);g.lineTo(x+s*.35,y+s*.75);g.strokePath(p);g.newPath();g.moveTo(x+s*.65,y+s*.25);g.lineTo(x+s*.65,y+s*.75);g.strokePath(p);},
+        lines:function(g,x,y,s,p){var c=[[0,0],[s,0],[0,s],[s,s],[s*.5,0],[0,s*.5],[s,s*.5],[s*.5,s]];for(var i=0;i<c.length;i++){g.newPath();var mx=x+s*.5+(c[i][0]-s*.5)*.45,my=y+s*.5+(c[i][1]-s*.5)*.45;g.moveTo(mx,my);g.lineTo(x+c[i][0],y+c[i][1]);g.strokePath(p);}},
+        precomp:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.2,s*.8,s*.8);g.strokePath(p);g.newPath();g.rectPath(x+s*.2,y,s*.8,s*.8);g.strokePath(p);},
+        folder:function(g,x,y,s,p){g.newPath();g.moveTo(x,y+s*.25);g.lineTo(x+s*.35,y+s*.25);g.lineTo(x+s*.45,y+s*.4);g.lineTo(x+s,y+s*.4);g.lineTo(x+s,y+s);g.lineTo(x,y+s);g.closePath();g.strokePath(p);},
+        gear:function(g,x,y,s,p){g.newPath();g.ellipsePath(x+s*.25,y+s*.25,s*.5,s*.5);g.strokePath(p);var t=[[.5,0,.5,.2],[.5,.8,.5,1],[0,.5,.2,.5],[.8,.5,1,.5]];for(var i=0;i<t.length;i++){g.newPath();g.moveTo(x+s*t[i][0],y+s*t[i][1]);g.lineTo(x+s*t[i][2],y+s*t[i][3]);g.strokePath(p);}},
+        // NEW
+        typewriter:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.6,s,s*.4);g.strokePath(p);var keys=[[.1,.3],[.4,.3],[.7,.3],[.25,.1],[.55,.1]];for(var i=0;i<keys.length;i++){g.newPath();g.rectPath(x+s*keys[i][0],y+s*keys[i][1],s*.18,s*.18);g.strokePath(p);}},
+        fadeup:function(g,x,y,s,p){g.newPath();g.moveTo(x+s*.5,y);g.lineTo(x+s*.5,y+s*.7);g.strokePath(p);g.newPath();g.moveTo(x+s*.3,y+s*.25);g.lineTo(x+s*.5,y);g.lineTo(x+s*.7,y+s*.25);g.strokePath(p);g.newPath();g.rectPath(x,y+s*.8,s,s*.2);g.strokePath(p);},
+        bounce:function(g,x,y,s,p){g.newPath();g.moveTo(x+s*.2,y+s);g.curveTo(x+s*.2,y+s*.4,x+s*.5,y,x+s*.5,y+s*.4);g.curveTo(x+s*.5,y,x+s*.8,y+s*.4,x+s*.8,y+s);g.strokePath(p);},
+        glitch:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.1,s*.7,s*.2);g.strokePath(p);g.newPath();g.rectPath(x+s*.1,y+s*.4,s*.8,s*.2);g.strokePath(p);g.newPath();g.rectPath(x,y+s*.7,s*.6,s*.2);g.strokePath(p);},
+        slide:function(g,x,y,s,p){g.newPath();g.moveTo(x,y+s*.5);g.lineTo(x+s*.7,y+s*.5);g.strokePath(p);g.newPath();g.moveTo(x+s*.5,y+s*.25);g.lineTo(x+s*.7,y+s*.5);g.lineTo(x+s*.5,y+s*.75);g.strokePath(p);g.newPath();g.rectPath(x+s*.75,y+s*.2,s*.25,s*.6);g.strokePath(p);},
+        word:function(g,x,y,s,p){var ys=[.15,.45,.75];for(var i=0;i<ys.length;i++){g.newPath();g.rectPath(x,y+s*ys[i],s*(i===1?.9:.7),s*.15);g.strokePath(p);}},
+        sound:function(g,x,y,s,p){g.newPath();g.rectPath(x+s*.1,y+s*.25,s*.2,s*.5);g.strokePath(p);g.newPath();g.moveTo(x+s*.3,y+s*.15);g.lineTo(x+s*.6,y);g.lineTo(x+s*.6,y+s);g.lineTo(x+s*.3,y+s*.85);g.closePath();g.strokePath(p);g.newPath();g.moveTo(x+s*.7,y+s*.3);g.curveTo(x+s*1.0,y+s*.3,x+s*1.0,y+s*.7,x+s*.7,y+s*.7);g.strokePath(p);},
+        grain:function(g,x,y,s,p){for(var i=0;i<8;i++){g.newPath();var px=x+Math.sin(i*67)*s*.4+s*.5,py=y+Math.cos(i*43)*s*.4+s*.5;g.ellipsePath(px-1,py-1,2,2);g.strokePath(p);}},
+        vignette:function(g,x,y,s,p){g.newPath();g.rectPath(x,y,s,s);g.strokePath(p);g.newPath();g.ellipsePath(x+s*.15,y+s*.15,s*.7,s*.7);g.strokePath(p);},
+        leak:function(g,x,y,s,p){g.newPath();g.moveTo(x,y+s*.5);for(var i=1;i<8;i++){var wave=Math.sin(i*0.9)*s*.15;g.lineTo(x+s*i/7,y+s*.5+wave);}g.strokePath(p);},
+        vhs:function(g,x,y,s,p){g.newPath();g.rectPath(x,y,s,s);g.strokePath(p);for(var i=1;i<4;i++){g.newPath();var offset=(i%2===0)?s*.05:-s*.05;g.moveTo(x+offset,y+s*i/4);g.lineTo(x+s+offset,y+s*i/4);g.strokePath(p);}},
+        scan:function(g,x,y,s,p){for(var i=0;i<4;i++){g.newPath();g.moveTo(x,y+s*i/3.5);g.lineTo(x+s,y+s*i/3.5);g.strokePath(p);}},
+        flare:function(g,x,y,s,p){g.newPath();g.ellipsePath(x+s*.3,y+s*.3,s*.4,s*.4);g.strokePath(p);var rays=[[0,0],[1,0],[0,1],[1,1],[.5,0],[.5,1],[0,.5],[1,.5]];for(var i=0;i<rays.length;i++){g.newPath();var rx=x+s*.5+(rays[i][0]-0.5)*s*.3,ry=y+s*.5+(rays[i][1]-0.5)*s*.3;g.moveTo(rx,ry);g.lineTo(x+rays[i][0]*s,y+rays[i][1]*s);g.strokePath(p);}},
+        dust:function(g,x,y,s,p){g.newPath();g.moveTo(x+s*.3,y);g.lineTo(x+s*.31,y+s);g.strokePath(p);g.newPath();g.moveTo(x+s*.7,y+s*.1);g.lineTo(x+s*.68,y+s*.9);g.strokePath(p);g.newPath();g.moveTo(x+s*.1,y+s*.3);g.lineTo(x+s*.12,y+s*.8);g.strokePath(p);},
+        tint:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s,s);g.strokePath(p);g.newPath();g.moveTo(x,y+s*.5);g.lineTo(x+s,y+s*.5);g.strokePath(p);}
     };
 
     // ============================================================
-    //  CUSTOM UI WIDGETS (flat themed buttons)
+    //  CUSTOM BUTTON WIDGETS
     // ============================================================
 
-    var allButtons = [];   // for re-theming
-    var allHeaders = [];
+    var allButtons = [], allHeaders = [], soundListbox = null;
 
-    /**
-     * Creates a flat, theme-aware icon button (drawn with the graphics API).
-     */
-    function iconButton(parent, label, iconName, tooltip, onClick) {
+    function iconButton(parent, label, iconName, tooltip, onClick, compact) {
         var btn = parent.add("group");
-        btn.preferredSize = [220, 28];
-        btn.minimumSize   = [160, 28];
+        btn.preferredSize = [compact ? 104 : 215, 26];
+        btn.minimumSize   = [compact ? 80  : 140, 26];
         btn.alignment     = ["fill", "top"];
         btn.helpTip       = tooltip;
-        btn._label  = label;
-        btn._icon   = iconName;
-        btn._hover  = false;
-        btn._down   = false;
+        btn._label = label; btn._icon = iconName;
+        btn._hover = false; btn._down = false;
 
-        btn.onDraw = function () {
-            var g  = this.graphics;
-            var th = theme();
-            var w  = this.size[0], h = this.size[1];
-
-            // Background
-            var bgCol = this._down ? accent() : (this._hover ? th.btnHover : th.panel);
-            g.newPath(); g.rectPath(0, 0, w, h);
-            g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR, [bgCol[0], bgCol[1], bgCol[2], 1]));
-
-            // Accent strip on the left
-            var ac = accent();
-            g.newPath(); g.rectPath(0, 0, 3, h);
-            g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR, [ac[0], ac[1], ac[2], 1]));
-
-            // Icon
-            var iconCol = this._down ? [1, 1, 1] : ac;
-            var pen = g.newPen(g.PenType.SOLID_COLOR, [iconCol[0], iconCol[1], iconCol[2], 1], 1.6);
-            var iconSize = 13, ix = 12, iy = (h - iconSize) / 2;
-            if (ICONS[this._icon]) ICONS[this._icon](g, ix, iy, iconSize, pen);
-
-            // Label
-            var txtCol = this._down ? [1, 1, 1] : th.text;
-            g.newPath();
-            var font = ScriptUI.newFont("Tahoma", ScriptUI.FontStyle.REGULAR, 12);
+        btn.onDraw = function() {
+            var g = this.graphics, th = theme(), ac = accent();
+            var w = this.size[0], h = this.size[1];
+            var bg = this._down ? ac : (this._hover ? th.btnHover : th.panel);
+            g.newPath(); g.rectPath(0,0,w,h);
+            g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[bg[0],bg[1],bg[2],1]));
+            g.newPath(); g.rectPath(0,0,3,h);
+            g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[ac[0],ac[1],ac[2],1]));
+            var ic = this._down ? [1,1,1] : ac;
+            var pen = g.newPen(g.PenType.SOLID_COLOR,[ic[0],ic[1],ic[2],1],1.5);
+            var is=12, ix=9, iy=(h-is)/2;
+            if(ICONS[this._icon]) ICONS[this._icon](g,ix,iy,is,pen);
+            var tc = this._down ? [1,1,1] : th.text;
+            var font = ScriptUI.newFont("Tahoma",ScriptUI.FontStyle.REGULAR,11);
             g.drawString(this._label,
-                g.newPen(g.PenType.SOLID_COLOR, [txtCol[0], txtCol[1], txtCol[2], 1], 1),
-                36, (h - 14) / 2, font);
+                g.newPen(g.PenType.SOLID_COLOR,[tc[0],tc[1],tc[2],1],1),
+                30,(h-13)/2,font);
         };
-
-        btn.addEventListener("mouseover", function () { this._hover = true;  this.notify("onDraw"); });
-        btn.addEventListener("mouseout",  function () { this._hover = false; this._down = false; this.notify("onDraw"); });
-        btn.addEventListener("mousedown", function () { this._down = true;   this.notify("onDraw"); });
-        btn.addEventListener("mouseup",   function () {
-            if (this._down) { this._down = false; this.notify("onDraw"); onClick(); }
-        });
-
+        btn.addEventListener("mouseover",function(){this._hover=true; this.notify("onDraw");});
+        btn.addEventListener("mouseout", function(){this._hover=false;this._down=false;this.notify("onDraw");});
+        btn.addEventListener("mousedown",function(){this._down=true; this.notify("onDraw");});
+        btn.addEventListener("mouseup",  function(){if(this._down){this._down=false;this.notify("onDraw");onClick();}});
         allButtons.push(btn);
         return btn;
     }
 
-    /** Section header with accent-colored title. */
+    /** Two compact buttons side by side in a row. */
+    function iconButtonRow(parent, items) {
+        var row = parent.add("group");
+        row.orientation = "row"; row.alignment = ["fill","top"]; row.spacing = 4;
+        for (var i = 0; i < items.length; i++) {
+            var it = items[i];
+            iconButton(row, it[0], it[1], it[2], it[3], true);
+        }
+    }
+
     function sectionHeader(parent, title) {
         var grp = parent.add("group");
-        grp.alignment = ["fill", "top"];
-        grp.preferredSize = [220, 18];
-        grp._title = title;
-        grp.onDraw = function () {
-            var g = this.graphics;
-            var ac = accent(), th = theme();
-            var font = ScriptUI.newFont("Tahoma", ScriptUI.FontStyle.BOLD, 11);
-            g.drawString(this._title,
-                g.newPen(g.PenType.SOLID_COLOR, [ac[0], ac[1], ac[2], 1], 1), 0, 2, font);
-            // underline
-            g.newPath(); g.moveTo(0, 16); g.lineTo(this.size[0], 16);
-            g.strokePath(g.newPen(g.PenType.SOLID_COLOR, [th.subtext[0], th.subtext[1], th.subtext[2], 0.5], 1));
+        grp.alignment = ["fill","top"]; grp.preferredSize = [215,16]; grp._title = title;
+        grp.onDraw = function() {
+            var g=this.graphics, ac=accent(), th=theme();
+            var font=ScriptUI.newFont("Tahoma",ScriptUI.FontStyle.BOLD,10);
+            g.drawString(this._title,g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],1],1),0,1,font);
+            g.newPath();g.moveTo(0,14);g.lineTo(this.size[0],14);
+            g.strokePath(g.newPen(g.PenType.SOLID_COLOR,[th.subtext[0],th.subtext[1],th.subtext[2],.4],1));
         };
         allHeaders.push(grp);
         return grp;
     }
 
     // ============================================================
-    //  SETTINGS / CUSTOMIZATION DIALOG
+    //  SETTINGS DIALOG
     // ============================================================
 
     function openSettingsDialog(mainPanel) {
-        var dlg = new Window("dialog", SCRIPT_NAME + " — Settings");
-        dlg.orientation = "column";
-        dlg.alignChildren = ["fill", "top"];
-        dlg.spacing = 10; dlg.margins = 14;
+        var dlg = new Window("dialog", SCRIPT_NAME+" — Paramètres");
+        dlg.orientation="column"; dlg.alignChildren=["fill","top"]; dlg.spacing=10; dlg.margins=14;
 
-        // --- Theme ---
-        var pTheme = dlg.add("panel", undefined, "Apparence");
-        pTheme.orientation = "column"; pTheme.alignChildren = ["left", "top"]; pTheme.margins = 12;
-
+        var pTheme = dlg.add("panel",undefined,"Apparence");
+        pTheme.orientation="column"; pTheme.alignChildren=["left","top"]; pTheme.margins=12;
         var gTheme = pTheme.add("group");
-        gTheme.add("statictext", undefined, "Thème :");
-        var rbDark  = gTheme.add("radiobutton", undefined, "Dark");
-        var rbLight = gTheme.add("radiobutton", undefined, "Light");
-        (settings.theme === "light" ? rbLight : rbDark).value = true;
-
-        var gAccent = pTheme.add("group");
-        gAccent.add("statictext", undefined, "Couleur d'accent :");
-        var ddAccent = gAccent.add("dropdownlist", undefined, (function () {
-            var names = [];
-            for (var i = 0; i < ACCENT_PRESETS.length; i++) names.push(ACCENT_PRESETS[i].name);
-            return names;
-        })());
-        ddAccent.selection = 0;
-        for (var i = 0; i < ACCENT_PRESETS.length; i++) {
-            if (ACCENT_PRESETS[i].hex === settings.accent) ddAccent.selection = i;
-        }
+        gTheme.add("statictext",undefined,"Thème :");
+        var rbDark  = gTheme.add("radiobutton",undefined,"Dark");
+        var rbLight = gTheme.add("radiobutton",undefined,"Light");
+        (settings.theme==="light"?rbLight:rbDark).value=true;
+        var gAcc = pTheme.add("group");
+        gAcc.add("statictext",undefined,"Accent :");
+        var names=[]; for(var k=0;k<ACCENT_PRESETS.length;k++) names.push(ACCENT_PRESETS[k].name);
+        var ddAcc = gAcc.add("dropdownlist",undefined,names); ddAcc.selection=0;
+        for(var k=0;k<ACCENT_PRESETS.length;k++) if(ACCENT_PRESETS[k].hex===settings.accent) ddAcc.selection=k;
         var gHex = pTheme.add("group");
-        gHex.add("statictext", undefined, "Ou hex personnalisé :");
-        var etHex = gHex.add("edittext", undefined, settings.accent);
-        etHex.characters = 9;
+        gHex.add("statictext",undefined,"Hex custom :");
+        var etHex = gHex.add("edittext",undefined,settings.accent); etHex.characters=9;
 
-        // --- Zoom defaults ---
-        var pZoom = dlg.add("panel", undefined, "Smooth Zoom");
-        pZoom.orientation = "column"; pZoom.alignChildren = ["left", "top"]; pZoom.margins = 12;
+        var pZoom = dlg.add("panel",undefined,"Smooth Zoom");
+        pZoom.orientation="column"; pZoom.alignChildren=["left","top"]; pZoom.margins=12;
         var gAmt = pZoom.add("group");
-        gAmt.add("statictext", undefined, "Intensité (%) :");
-        var etAmt = gAmt.add("edittext", undefined, String(settings.zoomAmount)); etAmt.characters = 5;
+        gAmt.add("statictext",undefined,"Intensité (%) :"); var etAmt=gAmt.add("edittext",undefined,String(settings.zoomAmount)); etAmt.characters=5;
         var gDur = pZoom.add("group");
-        gDur.add("statictext", undefined, "Durée (frames) :");
-        var etDur = gDur.add("edittext", undefined, String(settings.zoomFrames)); etDur.characters = 5;
+        gDur.add("statictext",undefined,"Durée (frames) :"); var etDur=gDur.add("edittext",undefined,String(settings.zoomFrames)); etDur.characters=5;
 
-        // --- License ---
-        var pLic = dlg.add("panel", undefined, "Licence");
-        pLic.orientation = "column"; pLic.alignChildren = ["fill", "top"]; pLic.margins = 12;
-        var licStatus = pLic.add("statictext", undefined,
-            isLicensed() ? "✓ Licence activée" : "Mode essai — entrez votre clé (EHP-XXXX-XXXX-XXXX)");
+        var pLic = dlg.add("panel",undefined,"Licence");
+        pLic.orientation="column"; pLic.alignChildren=["fill","top"]; pLic.margins=12;
+        var licLbl = pLic.add("statictext",undefined,isLicensed()?"✓ Licence activée":"Mode essai — entrez votre clé");
         var gKey = pLic.add("group");
-        var etKey = gKey.add("edittext", undefined, settings.licenseKey); etKey.characters = 22;
-        var btnActivate = gKey.add("button", undefined, "Activer");
-        btnActivate.onClick = function () {
-            if (validateLicenseKey(etKey.text)) {
-                settings.licenseKey = etKey.text.toUpperCase().replace(/\s/g, "");
-                saveSetting("licenseKey", settings.licenseKey);
-                licStatus.text = "✓ Licence activée";
-                alert(SCRIPT_NAME + "\n\nMerci ! Votre licence est activée.");
-            } else {
-                alert(SCRIPT_NAME + "\n\nClé invalide. Vérifiez le format EHP-XXXX-XXXX-XXXX.");
-            }
+        var etKey = gKey.add("edittext",undefined,settings.licenseKey); etKey.characters=22;
+        var btnAct = gKey.add("button",undefined,"Activer");
+        btnAct.onClick = function() {
+            if(validateLicenseKey(etKey.text)){
+                settings.licenseKey=etKey.text.toUpperCase().replace(/\s/g,"");
+                saveSetting("licenseKey",settings.licenseKey);
+                licLbl.text="✓ Licence activée";
+                alert(SCRIPT_NAME+"\n\nLicence activée. Merci !");
+            } else alert(SCRIPT_NAME+"\n\nClé invalide (format EHP-XXXX-XXXX-XXXX).");
         };
 
-        // --- Buttons ---
-        var gBtns = dlg.add("group");
-        gBtns.alignment = ["right", "top"];
-        var btnCancel = gBtns.add("button", undefined, "Annuler");
-        var btnSave   = gBtns.add("button", undefined, "Enregistrer");
-
-        btnCancel.onClick = function () { dlg.close(); };
-        btnSave.onClick = function () {
-            settings.theme = rbLight.value ? "light" : "dark";
-
-            // Hex field overrides preset if it's a valid color
-            var hex = etHex.text.replace(/\s/g, "");
-            if (/^#?[0-9A-Fa-f]{6}$/.test(hex)) {
-                settings.accent = (hex.charAt(0) === "#" ? hex : "#" + hex).toUpperCase();
-            } else if (ddAccent.selection !== null) {
-                settings.accent = ACCENT_PRESETS[ddAccent.selection.index].hex;
-            }
-
-            var amt = parseFloat(etAmt.text);
-            var dur = parseInt(etDur.text, 10);
-            if (!isNaN(amt) && amt > 0 && amt <= 200) settings.zoomAmount = amt;
-            if (!isNaN(dur) && dur > 0 && dur <= 120) settings.zoomFrames = dur;
-
-            saveSetting("theme", settings.theme);
-            saveSetting("accent", settings.accent);
-            saveSetting("zoomAmount", settings.zoomAmount);
-            saveSetting("zoomFrames", settings.zoomFrames);
-
-            applyTheme(mainPanel);
-            dlg.close();
+        var gBtns=dlg.add("group"); gBtns.alignment=["right","top"];
+        gBtns.add("button",undefined,"Annuler").onClick=function(){dlg.close();};
+        gBtns.add("button",undefined,"Enregistrer").onClick=function(){
+            settings.theme=rbLight.value?"light":"dark";
+            var hex=etHex.text.replace(/\s/g,"");
+            if(/^#?[0-9A-Fa-f]{6}$/.test(hex)) settings.accent=(hex[0]==="#"?hex:"#"+hex).toUpperCase();
+            else if(ddAcc.selection!==null) settings.accent=ACCENT_PRESETS[ddAcc.selection.index].hex;
+            var amt=parseFloat(etAmt.text), dur=parseInt(etDur.text,10);
+            if(!isNaN(amt)&&amt>0&&amt<=200) settings.zoomAmount=amt;
+            if(!isNaN(dur)&&dur>0&&dur<=120) settings.zoomFrames=dur;
+            saveSetting("theme",settings.theme); saveSetting("accent",settings.accent);
+            saveSetting("zoomAmount",settings.zoomAmount); saveSetting("zoomFrames",settings.zoomFrames);
+            applyTheme(mainPanel); dlg.close();
         };
-
-        dlg.center();
-        dlg.show();
+        dlg.center(); dlg.show();
     }
 
-    /** Re-applies theme colors to the whole panel. */
     function applyTheme(panel) {
-        var th = theme();
-        try {
-            panel.graphics.backgroundColor =
-                panel.graphics.newBrush(panel.graphics.BrushType.SOLID_COLOR, th.bg);
-        } catch (e) {}
-        for (var i = 0; i < allButtons.length; i++) allButtons[i].notify("onDraw");
-        for (var j = 0; j < allHeaders.length; j++) allHeaders[j].notify("onDraw");
-        if (panel.layout) panel.layout.layout(true);
+        var th=theme();
+        try { panel.graphics.backgroundColor=panel.graphics.newBrush(panel.graphics.BrushType.SOLID_COLOR,th.bg); } catch(e){}
+        for(var i=0;i<allButtons.length;i++) allButtons[i].notify("onDraw");
+        for(var j=0;j<allHeaders.length;j++) allHeaders[j].notify("onDraw");
+        if(panel.layout) panel.layout.layout(true);
     }
 
     // ============================================================
-    //  MAIN UI
+    //  SOUND BANK PANEL (built inside a tab)
+    // ============================================================
+
+    function buildSoundsTab(parent) {
+        var grp = parent.add("group");
+        grp.orientation="column"; grp.alignChildren=["fill","top"]; grp.spacing=6; grp.margins=8;
+
+        sectionHeader(grp, "DOSSIER DE SONS");
+
+        var rowPath = grp.add("group");
+        rowPath.orientation="row"; rowPath.alignment=["fill","top"]; rowPath.spacing=4;
+        var etPath = rowPath.add("edittext",undefined, settings.soundFolder||"(aucun dossier)");
+        etPath.alignment=["fill","center"]; etPath.enabled=false; etPath.characters=22;
+        var btnBrowse = rowPath.add("button",undefined,"...");
+        btnBrowse.preferredSize=[28,22];
+
+        sectionHeader(grp, "FICHIERS AUDIO");
+
+        var lb = grp.add("listbox",[0,0,215,180]);
+        lb.alignment=["fill","top"]; soundListbox=lb;
+
+        var rowBtns = grp.add("group");
+        rowBtns.orientation="row"; rowBtns.alignment=["fill","top"]; rowBtns.spacing=4;
+        var btnAdd     = rowBtns.add("button",undefined,"Ajouter à la comp");
+        var btnRefresh = rowBtns.add("button",undefined,"↺");
+        btnRefresh.preferredSize=[28,22];
+
+        // Populate listbox
+        function refreshList() {
+            lb.removeAll();
+            var files=getSoundFiles();
+            for(var i=0;i<files.length;i++){
+                var name=files[i] instanceof File ? files[i].name : String(files[i]).replace(/.*[\/\\]/,"");
+                var item=lb.add("item",name);
+                item._path = files[i] instanceof File ? files[i].fsName : String(files[i]);
+            }
+        }
+
+        btnBrowse.onClick = function() {
+            var folder = Folder.selectDialog("Sélectionnez votre dossier de sons");
+            if(folder){
+                settings.soundFolder=folder.fsName;
+                saveSetting("soundFolder",settings.soundFolder);
+                etPath.text=settings.soundFolder;
+                refreshList();
+            }
+        };
+        btnRefresh.onClick=refreshList;
+        btnAdd.onClick=function(){
+            if(!lb.selection){ alert(SCRIPT_NAME+"\n\nSélectionnez un fichier dans la liste."); return; }
+            addSoundToComp(lb.selection._path);
+        };
+
+        // Double-click to add immediately
+        lb.onDoubleClick = function() { if(lb.selection) addSoundToComp(lb.selection._path); };
+
+        if(settings.soundFolder) refreshList();
+    }
+
+    // ============================================================
+    //  MAIN UI — TABBED PANEL
     // ============================================================
 
     function buildUI(thisObj) {
         var panel = (thisObj instanceof Panel)
             ? thisObj
-            : new Window("palette", SCRIPT_NAME, undefined, { resizeable: true });
+            : new Window("palette", SCRIPT_NAME, undefined, { resizeable:true });
 
-        panel.orientation = "column";
-        panel.alignChildren = ["fill", "top"];
-        panel.spacing = 6;
-        panel.margins = 10;
+        panel.orientation="column"; panel.alignChildren=["fill","top"];
+        panel.spacing=6; panel.margins=[8,8,8,6];
 
-        // ---- LAYERS ----
-        sectionHeader(panel, "LAYERS");
-        iconButton(panel, "Adjustment Layer", "adjustment",
-            "Calque d'ajustement EH_Adjustment au-dessus de la sélection (ou toute la comp).",
-            createAdjustmentLayer);
-        iconButton(panel, "White Flash", "flash",
-            "Flash blanc de 6 frames au temps courant (opacité 100→0).",
-            function () { createFlash("white"); });
-        iconButton(panel, "Black Flash", "flash",
-            "Flash noir de 6 frames au temps courant (opacité 100→0).",
-            function () { createFlash("black"); });
+        // ---- Tabbed area ----
+        var tabs = panel.add("tabbedpanel");
+        tabs.alignment=["fill","fill"];
 
-        // ---- ZOOMS ----
-        sectionHeader(panel, "ZOOMS");
-        iconButton(panel, "Smooth Zoom In", "zoomIn",
-            "Zoom avant progressif (+" + settings.zoomAmount + "% par défaut, réglable dans Settings).",
-            function () { smoothZoom("in"); });
-        iconButton(panel, "Smooth Zoom Out", "zoomOut",
-            "Zoom arrière progressif.",
-            function () { smoothZoom("out"); });
-        iconButton(panel, "Punch Out-In", "punch",
-            "Zoom arrière puis retour — effet de recul/punch.",
-            function () { smoothZoom("outin"); });
-        iconButton(panel, "Punch In-Out", "punch",
-            "Zoom avant puis retour — effet d'impact.",
-            function () { smoothZoom("inout"); });
+        // ---- TAB 1: EDIT ----
+        var tabEdit = tabs.add("tab",undefined,"Edit");
+        tabEdit.orientation="column"; tabEdit.alignChildren=["fill","top"]; tabEdit.spacing=5; tabEdit.margins=6;
 
-        // ---- SHAKES ----
-        sectionHeader(panel, "SHAKES");
-        iconButton(panel, "Quick Shake — Light", "shake",
-            "Shake léger sur calque d'ajustement (non destructif, 10 frames).",
-            function () { quickShake(10, 15, "Light"); });
-        iconButton(panel, "Quick Shake — Medium", "shake",
-            "Shake moyen sur calque d'ajustement (non destructif, 10 frames).",
-            function () { quickShake(15, 30, "Medium"); });
-        iconButton(panel, "Quick Shake — Heavy", "shake",
-            "Gros shake sur calque d'ajustement (non destructif, 10 frames).",
-            function () { quickShake(20, 50, "Heavy"); });
-        iconButton(panel, "Impact Shake (expression)", "shake",
-            "wiggle(18, 35) directement sur la Position des calques sélectionnés.",
-            impactShake);
+        sectionHeader(tabEdit, "LAYERS");
+        iconButton(tabEdit,"Adjustment Layer","adjustment","Calque d'ajustement EH_Adjustment.",createAdjustmentLayer);
+        iconButtonRow(tabEdit,[
+            ["White Flash","flash","Flash blanc 6 frames.",function(){createFlash("white");}],
+            ["Black Flash","flash","Flash noir 6 frames.", function(){createFlash("black");}]
+        ]);
 
-        // ---- EFFECTS ----
-        sectionHeader(panel, "EFFECTS");
-        iconButton(panel, "RGB Split", "rgb",
-            "Vraie séparation R/G/B via Shift Channels + mode Add.",
-            rgbSplit);
-        iconButton(panel, "Glow Boost", "glow",
-            "Effet Glow natif (Threshold 60, Radius 35, Intensity 1.5).",
-            glowBoost);
-        iconButton(panel, "Speed Lines (anime)", "lines",
-            "Lignes de vitesse radiales façon anime — 100% effets natifs.",
-            speedLines);
-        iconButton(panel, "Freeze Frame", "freeze",
-            "Fige le calque sélectionné au temps courant (split + time remap hold).",
-            freezeFrame);
+        sectionHeader(tabEdit, "ZOOMS");
+        iconButtonRow(tabEdit,[
+            ["Zoom In",  "zoomIn",  "Zoom avant progressif.", function(){smoothZoom("in");}],
+            ["Zoom Out", "zoomOut", "Zoom arrière progressif.",function(){smoothZoom("out");}]
+        ]);
+        iconButtonRow(tabEdit,[
+            ["Punch Out↩In","punch","Recul puis retour.",function(){smoothZoom("outin");}],
+            ["Punch In↩Out","punch","Impact puis retour.",function(){smoothZoom("inout");}]
+        ]);
 
-        // ---- PROJECT ----
-        sectionHeader(panel, "PROJECT");
-        iconButton(panel, "Auto Precomp", "precomp",
-            "Précompose la sélection en EH_Precomp_XX.",
-            autoPrecompSelected);
-        iconButton(panel, "Organize Project", "folder",
-            "Crée les dossiers standards et range tous les items du projet.",
-            organizeProject);
+        sectionHeader(tabEdit, "SHAKES");
+        iconButtonRow(tabEdit,[
+            ["Shake Light", "shake","Shake léger (adj, non destructif).",function(){quickShake(10,15,"Light");}],
+            ["Shake Medium","shake","Shake moyen.",function(){quickShake(15,30,"Medium");}]
+        ]);
+        iconButtonRow(tabEdit,[
+            ["Shake Heavy", "shake","Gros shake.",function(){quickShake(20,50,"Heavy");}],
+            ["Impact (expr)","shake","wiggle(18,35) sur Position.",impactShake]
+        ]);
 
-        // ---- Footer: settings + version + license badge ----
+        sectionHeader(tabEdit, "EFFECTS");
+        iconButtonRow(tabEdit,[
+            ["RGB Split","rgb","Vraie séparation R/G/B.",rgbSplit],
+            ["Glow Boost","glow","Glow natif.",glowBoost]
+        ]);
+        iconButtonRow(tabEdit,[
+            ["Speed Lines","lines","Lignes radiales anime.", speedLines],
+            ["Freeze Frame","freeze","Fige au playhead.", freezeFrame]
+        ]);
+
+        sectionHeader(tabEdit, "PROJECT");
+        iconButtonRow(tabEdit,[
+            ["Precomp","precomp","Auto Precomp sélection.",autoPrecompSelected],
+            ["Organize","folder","Range le projet.",organizeProject]
+        ]);
+
+        // ---- TAB 2: TEXT ----
+        var tabText = tabs.add("tab",undefined,"Text");
+        tabText.orientation="column"; tabText.alignChildren=["fill","top"]; tabText.spacing=5; tabText.margins=6;
+
+        sectionHeader(tabText,"REVEAL");
+        iconButton(tabText,"Typewriter","typewriter","Caractère par caractère, opacité reveal (24 frames).",textTypewriter);
+        iconButton(tabText,"Fade Up","fadeup","Mots remontent et s'affichent (18 frames).",textFadeUp);
+        iconButton(tabText,"Word Reveal","word","Mot par mot, fondu (20 frames).",textWordReveal);
+        iconButton(tabText,"Bounce In","bounce","Caractères rebondissent en scale 0→120→100 %.",textBounceIn);
+
+        sectionHeader(tabText,"SLIDES");
+        iconButtonRow(tabText,[
+            ["◀ From Left", "slide","Slide depuis la gauche.",function(){textSlide("left");}],
+            ["From Right ▶","slide","Slide depuis la droite.",function(){textSlide("right");}]
+        ]);
+        iconButtonRow(tabText,[
+            ["▲ From Top",   "slide","Glisse depuis le haut.",function(){textSlide("top");}],
+            ["From Bottom ▼","slide","Glisse depuis le bas.",function(){textSlide("bottom");}]
+        ]);
+
+        sectionHeader(tabText,"SPECIAL");
+        iconButton(tabText,"Glitch Text","glitch","Jitter de position + clignotement par caractère (expression).",textGlitch);
+
+        var note = tabText.add("statictext",undefined,
+            "⚠ Sélectionnez un calque de texte avant\nd'appliquer une animation.",
+            {multiline:true});
+        note.alignment=["fill","top"];
+
+        // ---- TAB 3: SOUNDS ----
+        var tabSounds = tabs.add("tab",undefined,"Sounds");
+        buildSoundsTab(tabSounds);
+
+        // ---- TAB 4: OVERLAYS ----
+        var tabOverlays = tabs.add("tab",undefined,"Overlays");
+        tabOverlays.orientation="column"; tabOverlays.alignChildren=["fill","top"]; tabOverlays.spacing=5; tabOverlays.margins=6;
+
+        sectionHeader(tabOverlays,"TEXTURE");
+        iconButtonRow(tabOverlays,[
+            ["Film Grain","grain","Add Grain natif sur calque adj.",overlayFilmGrain],
+            ["Vignette",  "vignette","Vignette sombre avec masque.",overlayVignette]
+        ]);
+        iconButtonRow(tabOverlays,[
+            ["Light Leak","leak","Fuite de lumière chaude animée.",overlayLightLeak],
+            ["Dust & Scratches","dust","Rayures et poussière (Screen).",overlayDust]
+        ]);
+        iconButtonRow(tabOverlays,[
+            ["Scanlines","scan","Lignes de balayage CRT (Grid).",overlayScanlines],
+            ["VHS Glitch","vhs","Wave Warp + Noise + désaturation.",overlayVHS]
+        ]);
+
+        sectionHeader(tabOverlays,"LIGHT");
+        iconButton(tabOverlays,"Lens Flare","flare","Flare natif centré en mode Add.",overlayLensFlare);
+
+        sectionHeader(tabOverlays,"COLOR TINT");
+        iconButtonRow(tabOverlays,[
+            ["Cinematic","tint","Ombres bleues / hautes lumières orangées.",
+                function(){overlayColorTint([0.05,0.1,0.3],[1,0.9,0.7],"Cinematic");}],
+            ["Anime Warm","tint","Chaud saturé façon anime.",
+                function(){overlayColorTint([0.2,0.05,0.1],[1,0.95,0.7],"AnimeWarm");}]
+        ]);
+        iconButtonRow(tabOverlays,[
+            ["Night Blue","tint","Ambiance nuit froide.",
+                function(){overlayColorTint([0,0.05,0.2],[0.7,0.85,1],"NightBlue");}],
+            ["Ski / Snow","tint","Ciel clair, neige lumineuse.",
+                function(){overlayColorTint([0.1,0.15,0.25],[0.95,0.98,1],"SkiSnow");}]
+        ]);
+
+        // ---- Footer (outside tabs) ----
         var footer = panel.add("group");
-        footer.alignment = ["fill", "bottom"];
-        footer.spacing = 8;
+        footer.orientation="row"; footer.alignment=["fill","bottom"]; footer.spacing=6;
 
-        var btnSettings = iconButton(footer, "Settings & Theme", "gear",
-            "Personnaliser le thème, la couleur d'accent, les zooms et la licence.",
-            function () { openSettingsDialog(panel); });
-        btnSettings.preferredSize = [150, 26];
+        iconButton(footer,"Settings","gear","Thème, couleurs, zoom, licence.",
+            function(){openSettingsDialog(panel);});
 
-        var verText = panel.add("statictext", undefined,
-            SCRIPT_NAME + " v" + SCRIPT_VERSION + (isLicensed() ? "  •  Licensed" : "  •  Trial"));
-        verText.alignment = ["center", "bottom"];
+        var verLbl = panel.add("statictext",undefined,
+            "v"+SCRIPT_VERSION+(isLicensed()?"  •  ✓ Licensed":"  •  Trial"));
+        verLbl.alignment=["right","bottom"];
 
         applyTheme(panel);
 
-        if (panel instanceof Window) {
-            panel.center();
-            panel.show();
-        } else {
-            panel.layout.layout(true);
-        }
+        if(panel instanceof Window){ panel.center(); panel.show(); }
+        else { panel.layout.layout(true); }
         return panel;
     }
 

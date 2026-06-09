@@ -6,6 +6,42 @@ Format: `[Version] — YYYY-MM-DD`
 
 ---
 
+## [0.3.0] — 2026-06-09
+
+### Added
+
+**UI**
+- Tabbed layout: **Edit** / **Text** / **Sounds** / **Overlays** — panel height stays compact.
+- Compact 2-column button rows for grouped features.
+- All new icons drawn via ScriptUI graphics API (fully vectoriel, theme-aware).
+
+**Text Animations (Tab "Text")**
+- **Typewriter** — character-by-character opacity reveal, 24 frames.
+- **Fade Up** — words fade in from 40 px below, 18 frames, word-based selector.
+- **Word Reveal** — word-by-word opacity reveal, 20 frames.
+- **Bounce In** — characters scale from 0 → 120 → 100 % with Easy Ease.
+- **Slide From Left / Right / Top / Bottom** — line-based position + opacity animator.
+- **Glitch Text** — position jitter + opacity flicker via expressions on the animator.
+
+**Sound Bank (Tab "Sounds")**
+- Folder browser: choose any local folder with audio files.
+- Listbox listing all `.wav/.mp3/.aif/.aiff/.m4a/.ogg/.flac` files found in the folder.
+- Click or double-click to import and place the sound at the current time in the active comp.
+- Re-uses already-imported footage instead of duplicating project items.
+- Folder path persisted between sessions via `app.settings`.
+
+**Overlays (Tab "Overlays")**
+- **Film Grain** — `Add Grain` effect on adjustment layer.
+- **Vignette** — dark solid with inverted feathered ellipse mask.
+- **Light Leak** — warm amber solid, Fractal Noise, Add blend, animated pan.
+- **Dust & Scratches** — high-contrast narrow Fractal Noise, Screen blend.
+- **Scanlines** — Grid effect on solid, Multiply blend.
+- **VHS Glitch** — Wave Warp + Noise + Hue/Saturation desaturation on adj layer.
+- **Lens Flare** — native Lens Flare effect on solid, Add blend.
+- **Color Tints** — 4 presets via native Tint effect: Cinematic, Anime Warm, Night Blue, Ski/Snow.
+
+---
+
 ## [0.2.0] — 2026-06-09
 
 ### Added

@@ -843,6 +843,17 @@
 
     var allButtons = [], allHeaders = [], soundListbox = null;
 
+    /**
+     * Safely requests a redraw of a custom-drawn element.
+     * `notify("onDraw")` is not available on groups in every AE version
+     * (and fails before the panel is shown), so guard every call.
+     */
+    function safeRedraw(el) {
+        try {
+            if (el && typeof el.notify === "function") el.notify("onDraw");
+        } catch (e) { /* element not yet drawable — ignore */ }
+    }
+
     function iconButton(parent, label, iconName, tooltip, onClick, compact) {
         var btn = parent.add("group");
         btn.preferredSize = [compact ? 104 : 215, 26];
@@ -870,10 +881,10 @@
                 g.newPen(g.PenType.SOLID_COLOR,[tc[0],tc[1],tc[2],1],1),
                 30,(h-13)/2,font);
         };
-        btn.addEventListener("mouseover",function(){this._hover=true; this.notify("onDraw");});
-        btn.addEventListener("mouseout", function(){this._hover=false;this._down=false;this.notify("onDraw");});
-        btn.addEventListener("mousedown",function(){this._down=true; this.notify("onDraw");});
-        btn.addEventListener("mouseup",  function(){if(this._down){this._down=false;this.notify("onDraw");onClick();}});
+        btn.addEventListener("mouseover",function(){this._hover=true; safeRedraw(this);});
+        btn.addEventListener("mouseout", function(){this._hover=false;this._down=false;safeRedraw(this);});
+        btn.addEventListener("mousedown",function(){this._down=true; safeRedraw(this);});
+        btn.addEventListener("mouseup",  function(){if(this._down){this._down=false;safeRedraw(this);onClick();}});
         allButtons.push(btn);
         return btn;
     }
@@ -968,8 +979,8 @@
     function applyTheme(panel) {
         var th=theme();
         try { panel.graphics.backgroundColor=panel.graphics.newBrush(panel.graphics.BrushType.SOLID_COLOR,th.bg); } catch(e){}
-        for(var i=0;i<allButtons.length;i++) allButtons[i].notify("onDraw");
-        for(var j=0;j<allHeaders.length;j++) allHeaders[j].notify("onDraw");
+        for(var i=0;i<allButtons.length;i++) safeRedraw(allButtons[i]);
+        for(var j=0;j<allHeaders.length;j++) safeRedraw(allHeaders[j]);
         if(panel.layout) panel.layout.layout(true);
     }
 

@@ -6,6 +6,24 @@ Format: `[Version] — YYYY-MM-DD`
 
 ---
 
+## [0.4.0] — 2026-06-11
+
+### Changed — UI overhaul
+
+- All actions are now real ScriptUI **`button`** elements (previously custom-drawn `group`s, which could overlap or fall outside the visible area in narrow docked panels and become unclickable).
+- **Single-column layout** in every tab — removed the 2-column compact rows that caused clipping on narrow panel widths.
+- Each button now has a **short description** displayed underneath it (small grey text), explaining exactly what the action does, in addition to the existing tooltip.
+- The panel now relies on After Effects' native scrolling for docked ScriptUI panels when content exceeds the visible height.
+
+### Added — AI Chat tab
+
+- New **"AI Chat"** tab: type a request in plain language (French or English) and the assistant applies the corresponding action directly in the active composition.
+- **Local mode** (default, no setup): a keyword matcher maps your message to one of ~30 actions covering every feature in Edit / Text / Overlays.
+- **AI Bridge mode** (optional): point the panel to a local server (`host:port`) in Settings. The panel sends `{"message": "..."}` over plain TCP and expects `{"action": "<key>", "reply": "<text>"}` back. This lets you connect a real LLM (Claude, GPT…) — see the "AI Bridge" section in README.md for the protocol and a sample server.
+- New `aiBridgeHost` setting, persisted via `app.settings`.
+
+---
+
 ## [0.3.0] — 2026-06-09
 
 ### Added

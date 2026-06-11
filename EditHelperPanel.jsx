@@ -1,22 +1,25 @@
 /**
- * Edit Helper Panel v0.3
+ * Edit Helper Panel v0.4
  * ScriptUI Panel for Adobe After Effects (2024+)
  *
  * Place in: [AE Install]/Scripts/ScriptUI Panels/
  * Open via: Window > Edit Helper Panel
  *
- * New in v0.3:
- *  - Tabbed layout (Edit / Text / Sounds / Overlays)
- *  - Text animation presets (Typewriter, Fade Up, Bounce In, Glitch, Slide, Word Reveal)
- *  - Sound bank (folder browser + one-click import into comp)
- *  - Overlay bank (Film Grain, Vignette, Light Leak, VHS, Scanlines,
- *                  Lens Flare, Dust & Scratches, Color Tint)
+ * New in v0.4:
+ *  - Full UI overhaul: every action is now a real ScriptUI Button (always
+ *    clickable, even in narrow docked panels) with a short description
+ *    line underneath explaining what it does.
+ *  - Single-column layout per tab — the panel scrolls naturally when the
+ *    docked area is shorter than the content.
+ *  - New "AI Chat" tab: describe an effect in plain language and the
+ *    assistant applies it directly (local keyword matcher, with optional
+ *    connection to a real LLM via a local "AI Bridge" — see README).
  */
 
 (function EditHelperPanel(thisObj) {
 
     var SCRIPT_NAME    = "Edit Helper Panel";
-    var SCRIPT_VERSION = "0.3";
+    var SCRIPT_VERSION = "0.4";
     var SETTINGS_KEY   = "EditHelperPanel";
 
     // ============================================================
@@ -29,7 +32,8 @@
         zoomAmount  : 15,
         zoomFrames  : 12,
         licenseKey  : "",
-        soundFolder : ""
+        soundFolder : "",
+        aiBridgeHost: ""
     };
 
     function loadSetting(key) {
@@ -49,7 +53,8 @@
         zoomAmount  : parseFloat(loadSetting("zoomAmount")),
         zoomFrames  : parseInt(loadSetting("zoomFrames"), 10),
         licenseKey  : loadSetting("licenseKey"),
-        soundFolder : loadSetting("soundFolder")
+        soundFolder : loadSetting("soundFolder"),
+        aiBridgeHost: loadSetting("aiBridgeHost")
     };
 
     // ============================================================
@@ -802,6 +807,137 @@
     }
 
     // ============================================================
+    //  AI ASSISTANT — DISPATCH TABLE + CHAT
+    // ============================================================
+    //
+    //  Two modes:
+    //   1. "Bridge" mode (optional): the panel sends the user's message as
+    //      JSON to a local server (e.g. http://127.0.0.1:8787) that you run
+    //      yourself and that calls a real LLM (Claude, GPT…). The bridge
+    //      replies with JSON: { "action": "<key from DISPATCH>",
+    //      "params": {...}, "reply": "<text shown to the user>" }.
+    //      ExtendScript's Socket only supports plain TCP, so the bridge
+    //      must be a small local HTTP/TCP server — see README for a sample.
+    //   2. "Local" mode (always available, no setup): a lightweight
+    //      keyword matcher maps the message to an action from DISPATCH.
+    //      Used automatically if the bridge is unreachable or unset.
+    // ============================================================
+
+    /** Every action the AI assistant (local or bridged) is allowed to trigger. */
+    var DISPATCH = {
+        adjustmentLayer : { run: createAdjustmentLayer, keywords: ["adjustment","ajustement","calque d'ajustement"] },
+        whiteFlash      : { run: function(){createFlash("white");}, keywords: ["white flash","flash blanc","flash"] },
+        blackFlash      : { run: function(){createFlash("black");}, keywords: ["black flash","flash noir"] },
+        zoomIn          : { run: function(){smoothZoom("in");},  keywords: ["zoom in","zoom avant","smooth zoom in"] },
+        zoomOut         : { run: function(){smoothZoom("out");}, keywords: ["zoom out","zoom arrière","dezoom","dézoom"] },
+        punchOutIn      : { run: function(){smoothZoom("outin");}, keywords: ["punch out","recul","punch in-out","punch out-in"] },
+        punchInOut      : { run: function(){smoothZoom("inout");}, keywords: ["punch in","impact zoom","punch in-out"] },
+        shakeLight      : { run: function(){quickShake(10,15,"Light");},  keywords: ["shake light","petit shake","shake léger"] },
+        shakeMedium     : { run: function(){quickShake(15,30,"Medium");}, keywords: ["shake medium","shake moyen"] },
+        shakeHeavy      : { run: function(){quickShake(20,50,"Heavy");},  keywords: ["shake heavy","gros shake","big shake"] },
+        impactShake     : { run: impactShake, keywords: ["wiggle","impact shake","secousse"] },
+        rgbSplit        : { run: rgbSplit, keywords: ["rgb split","chromatic aberration","aberration chromatique"] },
+        glowBoost       : { run: glowBoost, keywords: ["glow","lumineux","boost lumiere","boost lumière"] },
+        speedLines      : { run: speedLines, keywords: ["speed lines","lignes de vitesse","anime lines"] },
+        freezeFrame     : { run: freezeFrame, keywords: ["freeze frame","freeze","fige l'image","gel d'image"] },
+        autoPrecomp     : { run: autoPrecompSelected, keywords: ["precomp","précompose","precompose"] },
+        organizeProject : { run: organizeProject, keywords: ["organize","organise","range le projet","ranger le projet"] },
+        textTypewriter  : { run: textTypewriter, keywords: ["typewriter","machine a ecrire","machine à écrire"] },
+        textFadeUp      : { run: textFadeUp, keywords: ["fade up","texte qui monte"] },
+        textWordReveal  : { run: textWordReveal, keywords: ["word reveal","mot par mot"] },
+        textBounceIn    : { run: textBounceIn, keywords: ["bounce in","texte qui rebondit","rebond texte"] },
+        textGlitch      : { run: textGlitch, keywords: ["glitch text","texte glitch"] },
+        textSlideLeft   : { run: function(){textSlide("left");},  keywords: ["slide left","texte de gauche","slide depuis la gauche"] },
+        textSlideRight  : { run: function(){textSlide("right");}, keywords: ["slide right","texte de droite","slide depuis la droite"] },
+        textSlideTop    : { run: function(){textSlide("top");},   keywords: ["slide top","texte du haut"] },
+        textSlideBottom : { run: function(){textSlide("bottom");},keywords: ["slide bottom","texte du bas"] },
+        overlayFilmGrain: { run: overlayFilmGrain, keywords: ["film grain","grain"] },
+        overlayVignette : { run: overlayVignette, keywords: ["vignette"] },
+        overlayLightLeak: { run: overlayLightLeak, keywords: ["light leak","fuite de lumiere","fuite de lumière"] },
+        overlayDust     : { run: overlayDust, keywords: ["dust","poussiere","poussière","scratches","rayures"] },
+        overlayScanlines: { run: overlayScanlines, keywords: ["scanlines","scan lines","crt"] },
+        overlayVHS      : { run: overlayVHS, keywords: ["vhs","glitch vhs"] },
+        overlayLensFlare: { run: overlayLensFlare, keywords: ["lens flare","flare"] },
+        tintCinematic   : { run: function(){overlayColorTint([0.05,0.1,0.3],[1,0.9,0.7],"Cinematic");}, keywords: ["cinematic","tint cinema"] },
+        tintAnime       : { run: function(){overlayColorTint([0.2,0.05,0.1],[1,0.95,0.7],"AnimeWarm");}, keywords: ["anime warm","tint anime"] },
+        tintNight       : { run: function(){overlayColorTint([0,0.05,0.2],[0.7,0.85,1],"NightBlue");}, keywords: ["night blue","tint nuit"] },
+        tintSki         : { run: function(){overlayColorTint([0.1,0.15,0.25],[0.95,0.98,1],"SkiSnow");}, keywords: ["ski","snow","neige"] }
+    };
+
+    /**
+     * Tries to find an action in DISPATCH whose keywords match the message.
+     * Returns the action key, or null if nothing matched.
+     */
+    function matchLocalAction(message) {
+        var msg = message.toLowerCase();
+        for (var key in DISPATCH) {
+            if (!DISPATCH.hasOwnProperty(key)) continue;
+            var kws = DISPATCH[key].keywords;
+            for (var i = 0; i < kws.length; i++) {
+                if (msg.indexOf(kws[i]) !== -1) return key;
+            }
+        }
+        return null;
+    }
+
+    /**
+     * Sends the user message to a local AI bridge over plain TCP and waits
+     * (briefly) for a JSON reply. Returns null if the bridge is unreachable
+     * or replies with invalid data — the caller should fall back to the
+     * local keyword matcher in that case.
+     *
+     * Expected bridge protocol (see README "AI Bridge" section):
+     *   Request  (raw line, newline-terminated): {"message": "<user text>"}
+     *   Response (raw line, newline-terminated): {"action":"<key>","reply":"<text>"}
+     */
+    function callAIBridge(message) {
+        if (!settings.aiBridgeHost) return null;
+        var conn = new Socket();
+        try {
+            conn.timeout = 3;
+            var ok = conn.open(settings.aiBridgeHost, "UTF-8");
+            if (!ok) return null;
+            conn.write(JSON.stringify({ message: message }) + "\n");
+            var raw = conn.read(99999);
+            conn.close();
+            if (!raw) return null;
+            return eval("(" + raw + ")");
+        } catch (e) {
+            try { conn.close(); } catch(e2) {}
+            return null;
+        }
+    }
+
+    /**
+     * Main entry point for the chat: tries the AI bridge first, then falls
+     * back to local keyword matching. Executes the matched action (if any)
+     * and returns a reply string to display in the chat log.
+     */
+    function processAssistantMessage(message) {
+        // 1. Try the optional AI bridge
+        var bridgeResult = callAIBridge(message);
+        if (bridgeResult && bridgeResult.action) {
+            if (DISPATCH[bridgeResult.action]) {
+                DISPATCH[bridgeResult.action].run();
+                return bridgeResult.reply || "Action « " + bridgeResult.action + " » appliquée.";
+            }
+            if (bridgeResult.reply) return bridgeResult.reply;
+        }
+
+        // 2. Local keyword matching
+        var key = matchLocalAction(message);
+        if (key) {
+            DISPATCH[key].run();
+            return "✓ J'ai appliqué : " + key + ".";
+        }
+
+        return "Je n'ai pas reconnu d'action précise pour cette demande. " +
+               "Essayez par exemple : \"ajoute un white flash\", \"zoom in sur ce calque\", " +
+               "\"applique un glitch sur le texte\", \"ajoute un light leak\"…\n\n" +
+               "Pour brancher une vraie IA (Claude, GPT…), configurez un « AI Bridge » dans Settings (voir README).";
+    }
+
+    // ============================================================
     //  ICON DRAWING  (same approach as v0.2, extended)
     // ============================================================
 
@@ -834,14 +970,16 @@
         scan:function(g,x,y,s,p){for(var i=0;i<4;i++){g.newPath();g.moveTo(x,y+s*i/3.5);g.lineTo(x+s,y+s*i/3.5);g.strokePath(p);}},
         flare:function(g,x,y,s,p){g.newPath();g.ellipsePath(x+s*.3,y+s*.3,s*.4,s*.4);g.strokePath(p);var rays=[[0,0],[1,0],[0,1],[1,1],[.5,0],[.5,1],[0,.5],[1,.5]];for(var i=0;i<rays.length;i++){g.newPath();var rx=x+s*.5+(rays[i][0]-0.5)*s*.3,ry=y+s*.5+(rays[i][1]-0.5)*s*.3;g.moveTo(rx,ry);g.lineTo(x+rays[i][0]*s,y+rays[i][1]*s);g.strokePath(p);}},
         dust:function(g,x,y,s,p){g.newPath();g.moveTo(x+s*.3,y);g.lineTo(x+s*.31,y+s);g.strokePath(p);g.newPath();g.moveTo(x+s*.7,y+s*.1);g.lineTo(x+s*.68,y+s*.9);g.strokePath(p);g.newPath();g.moveTo(x+s*.1,y+s*.3);g.lineTo(x+s*.12,y+s*.8);g.strokePath(p);},
-        tint:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s,s);g.strokePath(p);g.newPath();g.moveTo(x,y+s*.5);g.lineTo(x+s,y+s*.5);g.strokePath(p);}
+        tint:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s,s);g.strokePath(p);g.newPath();g.moveTo(x,y+s*.5);g.lineTo(x+s,y+s*.5);g.strokePath(p);},
+        ai:function(g,x,y,s,p){g.newPath();g.rectPath(x,y,s,s*.75);g.strokePath(p);g.newPath();g.moveTo(x+s*.3,y+s*.75);g.lineTo(x+s*.15,y+s);g.lineTo(x+s*.45,y+s*.75);g.closePath();g.strokePath(p);g.newPath();g.ellipsePath(x+s*.22,y+s*.25,s*.12,s*.12);g.strokePath(p);g.newPath();g.ellipsePath(x+s*.66,y+s*.25,s*.12,s*.12);g.strokePath(p);},
+        send:function(g,x,y,s,p){g.newPath();g.moveTo(x,y+s*.5);g.lineTo(x+s,y);g.lineTo(x+s*.65,y+s*.5);g.lineTo(x+s,y+s);g.closePath();g.strokePath(p);}
     };
 
     // ============================================================
     //  CUSTOM BUTTON WIDGETS
     // ============================================================
 
-    var allButtons = [], allHeaders = [], soundListbox = null;
+    var allButtons = [], allHeaders = [], allDescs = [], soundListbox = null;
 
     /**
      * Safely requests a redraw of a custom-drawn element.
@@ -854,54 +992,60 @@
         } catch (e) { /* element not yet drawable — ignore */ }
     }
 
-    function iconButton(parent, label, iconName, tooltip, onClick, compact) {
-        var btn = parent.add("group");
-        btn.preferredSize = [compact ? 104 : 215, 26];
-        btn.minimumSize   = [compact ? 80  : 140, 26];
-        btn.alignment     = ["fill", "top"];
-        btn.helpTip       = tooltip;
+    /**
+     * A real ScriptUI `button` (always clickable, even in narrow docked
+     * panels) with a custom-drawn icon + label, followed by a small grey
+     * description line explaining what the action does.
+     */
+    function featureButton(parent, label, iconName, desc, onClick) {
+        var col = parent.add("group");
+        col.orientation = "column";
+        col.alignChildren = ["fill","top"];
+        col.spacing = 1;
+        col.alignment = ["fill","top"];
+
+        var btn = col.add("button", undefined, "");
+        btn.alignment = ["fill","top"];
+        btn.preferredSize = [-1, 28];
+        btn.helpTip = desc;
         btn._label = label; btn._icon = iconName;
-        btn._hover = false; btn._down = false;
+        btn._hover = false;
 
         btn.onDraw = function() {
             var g = this.graphics, th = theme(), ac = accent();
             var w = this.size[0], h = this.size[1];
-            var bg = this._down ? ac : (this._hover ? th.btnHover : th.panel);
+            var bg = this._hover ? th.btnHover : th.panel;
             g.newPath(); g.rectPath(0,0,w,h);
             g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[bg[0],bg[1],bg[2],1]));
             g.newPath(); g.rectPath(0,0,3,h);
             g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[ac[0],ac[1],ac[2],1]));
-            var ic = this._down ? [1,1,1] : ac;
-            var pen = g.newPen(g.PenType.SOLID_COLOR,[ic[0],ic[1],ic[2],1],1.5);
-            var is=12, ix=9, iy=(h-is)/2;
+            var pen = g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],1],1.5);
+            var is=14, ix=10, iy=(h-is)/2;
             if(ICONS[this._icon]) ICONS[this._icon](g,ix,iy,is,pen);
-            var tc = this._down ? [1,1,1] : th.text;
-            var font = ScriptUI.newFont("Tahoma",ScriptUI.FontStyle.REGULAR,11);
+            var font = ScriptUI.newFont("Tahoma",ScriptUI.FontStyle.REGULAR,12);
             g.drawString(this._label,
-                g.newPen(g.PenType.SOLID_COLOR,[tc[0],tc[1],tc[2],1],1),
-                30,(h-13)/2,font);
+                g.newPen(g.PenType.SOLID_COLOR,[th.text[0],th.text[1],th.text[2],1],1),
+                32,(h-14)/2,font);
         };
         btn.addEventListener("mouseover",function(){this._hover=true; safeRedraw(this);});
-        btn.addEventListener("mouseout", function(){this._hover=false;this._down=false;safeRedraw(this);});
-        btn.addEventListener("mousedown",function(){this._down=true; safeRedraw(this);});
-        btn.addEventListener("mouseup",  function(){if(this._down){this._down=false;safeRedraw(this);onClick();}});
-        allButtons.push(btn);
-        return btn;
-    }
+        btn.addEventListener("mouseout", function(){this._hover=false; safeRedraw(this);});
+        btn.onClick = onClick;
 
-    /** Two compact buttons side by side in a row. */
-    function iconButtonRow(parent, items) {
-        var row = parent.add("group");
-        row.orientation = "row"; row.alignment = ["fill","top"]; row.spacing = 4;
-        for (var i = 0; i < items.length; i++) {
-            var it = items[i];
-            iconButton(row, it[0], it[1], it[2], it[3], true);
-        }
+        var d = col.add("statictext", undefined, desc, {multiline:true});
+        d.alignment = ["fill","top"];
+        d._isDesc = true;
+        try {
+            d.graphics.font = ScriptUI.newFont("Tahoma", ScriptUI.FontStyle.REGULAR, 9);
+        } catch(e) {}
+
+        allButtons.push(btn);
+        allDescs.push(d);
+        return col;
     }
 
     function sectionHeader(parent, title) {
         var grp = parent.add("group");
-        grp.alignment = ["fill","top"]; grp.preferredSize = [215,16]; grp._title = title;
+        grp.alignment = ["fill","top"]; grp.preferredSize = [240,16]; grp._title = title;
         grp.onDraw = function() {
             var g=this.graphics, ac=accent(), th=theme();
             var font=ScriptUI.newFont("Tahoma",ScriptUI.FontStyle.BOLD,10);
@@ -959,6 +1103,14 @@
             } else alert(SCRIPT_NAME+"\n\nClé invalide (format EHP-XXXX-XXXX-XXXX).");
         };
 
+        var pAI = dlg.add("panel",undefined,"AI Assistant (optionnel)");
+        pAI.orientation="column"; pAI.alignChildren=["left","top"]; pAI.margins=12;
+        pAI.add("statictext",undefined,"Adresse du bridge IA local (host:port) :");
+        var etBridge = pAI.add("edittext",undefined,settings.aiBridgeHost); etBridge.characters=22;
+        var bridgeNote = pAI.add("statictext",undefined,
+            "Laissez vide pour utiliser l'assistant local (mots-clés).\nVoir README.md → section « AI Bridge ».",
+            {multiline:true});
+
         var gBtns=dlg.add("group"); gBtns.alignment=["right","top"];
         gBtns.add("button",undefined,"Annuler").onClick=function(){dlg.close();};
         gBtns.add("button",undefined,"Enregistrer").onClick=function(){
@@ -969,8 +1121,10 @@
             var amt=parseFloat(etAmt.text), dur=parseInt(etDur.text,10);
             if(!isNaN(amt)&&amt>0&&amt<=200) settings.zoomAmount=amt;
             if(!isNaN(dur)&&dur>0&&dur<=120) settings.zoomFrames=dur;
+            settings.aiBridgeHost = etBridge.text.replace(/\s/g,"");
             saveSetting("theme",settings.theme); saveSetting("accent",settings.accent);
             saveSetting("zoomAmount",settings.zoomAmount); saveSetting("zoomFrames",settings.zoomFrames);
+            saveSetting("aiBridgeHost",settings.aiBridgeHost);
             applyTheme(mainPanel); dlg.close();
         };
         dlg.center(); dlg.show();
@@ -981,6 +1135,14 @@
         try { panel.graphics.backgroundColor=panel.graphics.newBrush(panel.graphics.BrushType.SOLID_COLOR,th.bg); } catch(e){}
         for(var i=0;i<allButtons.length;i++) safeRedraw(allButtons[i]);
         for(var j=0;j<allHeaders.length;j++) safeRedraw(allHeaders[j]);
+        for(var k=0;k<allDescs.length;k++) {
+            try {
+                var d = allDescs[k];
+                d.graphics.foregroundColor = d.graphics.newPen(
+                    d.graphics.PenType.SOLID_COLOR,
+                    [th.subtext[0],th.subtext[1],th.subtext[2],1], 1);
+            } catch(e) {}
+        }
         if(panel.layout) panel.layout.layout(true);
     }
 
@@ -1045,6 +1207,71 @@
     }
 
     // ============================================================
+    //  CHAT / AI ASSISTANT TAB
+    // ============================================================
+
+    function buildChatTab(parent) {
+        var grp = parent.add("group");
+        grp.orientation="column"; grp.alignChildren=["fill","top"]; grp.spacing=6; grp.margins=8;
+
+        sectionHeader(grp, "ASSISTANT IA");
+
+        var info = grp.add("statictext", undefined,
+            "Décrivez l'effet souhaité en langage naturel "+
+            "(ex : \"ajoute un white flash\", \"zoom in sur la sélection\", "+
+            "\"glitch sur le texte\"). L'assistant exécute l'action "+
+            "directement dans After Effects.",
+            {multiline:true});
+        info.alignment=["fill","top"];
+        try { info.graphics.font = ScriptUI.newFont("Tahoma", ScriptUI.FontStyle.REGULAR, 9); } catch(e){}
+
+        var log = grp.add("edittext", undefined, "", {multiline:true, scrollable:true, readonly:true});
+        log.alignment=["fill","fill"];
+        log.preferredSize=[0,160];
+
+        function appendLog(who, text) {
+            log.text = (log.text ? log.text + "\n\n" : "") + who + " : " + text;
+            // Scroll to bottom by re-selecting all then collapsing selection
+            try { log.textselection = log.text.length; } catch(e) {}
+        }
+
+        var rowInput = grp.add("group");
+        rowInput.orientation="row"; rowInput.alignment=["fill","top"]; rowInput.spacing=4;
+        var input = rowInput.add("edittext", undefined, "");
+        input.alignment=["fill","center"];
+
+        var btnSend = rowInput.add("button", undefined, "");
+        btnSend.preferredSize=[34,26];
+        btnSend._icon="send";
+        btnSend.onDraw = function() {
+            var g=this.graphics, ac=accent(), th=theme();
+            g.newPath(); g.rectPath(0,0,this.size[0],this.size[1]);
+            g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[ac[0],ac[1],ac[2],1]));
+            var pen=g.newPen(g.PenType.SOLID_COLOR,[1,1,1,1],1.5);
+            ICONS.send(g, (this.size[0]-12)/2, (this.size[1]-12)/2, 12, pen);
+        };
+        allButtons.push(btnSend);
+
+        function send() {
+            var msg = input.text.replace(/^\s+|\s+$/g,"");
+            if (!msg) return;
+            appendLog("Vous", msg);
+            input.text = "";
+            var reply = processAssistantMessage(msg);
+            appendLog("Assistant", reply);
+        }
+        btnSend.onClick = send;
+        input.addEventListener("keydown", function(ev) {
+            if (ev.keyName === "Enter" || ev.keyName === "Return") { send(); ev.preventDefault(); }
+        });
+
+        appendLog("Assistant",
+            "Bonjour ! Dites-moi quel effet ajouter (white flash, zoom in, "+
+            "glitch texte, light leak…) et je l'applique directement sur "+
+            "votre composition.");
+    }
+
+    // ============================================================
     //  MAIN UI — TABBED PANEL
     // ============================================================
 
@@ -1065,75 +1292,107 @@
         tabEdit.orientation="column"; tabEdit.alignChildren=["fill","top"]; tabEdit.spacing=5; tabEdit.margins=6;
 
         sectionHeader(tabEdit, "LAYERS");
-        iconButton(tabEdit,"Adjustment Layer","adjustment","Calque d'ajustement EH_Adjustment.",createAdjustmentLayer);
-        iconButtonRow(tabEdit,[
-            ["White Flash","flash","Flash blanc 6 frames.",function(){createFlash("white");}],
-            ["Black Flash","flash","Flash noir 6 frames.", function(){createFlash("black");}]
-        ]);
+        featureButton(tabEdit,"Adjustment Layer","adjustment",
+            "Crée un calque d'ajustement (EH_Adjustment) au-dessus de la sélection, ou sur toute la comp si rien n'est sélectionné.",
+            createAdjustmentLayer);
+        featureButton(tabEdit,"White Flash","flash",
+            "Ajoute un flash blanc de 6 frames au temps courant, opacité 100% → 0%.",
+            function(){createFlash("white");});
+        featureButton(tabEdit,"Black Flash","flash",
+            "Ajoute un flash noir de 6 frames au temps courant, opacité 100% → 0%.",
+            function(){createFlash("black");});
 
         sectionHeader(tabEdit, "ZOOMS");
-        iconButtonRow(tabEdit,[
-            ["Zoom In",  "zoomIn",  "Zoom avant progressif.", function(){smoothZoom("in");}],
-            ["Zoom Out", "zoomOut", "Zoom arrière progressif.",function(){smoothZoom("out");}]
-        ]);
-        iconButtonRow(tabEdit,[
-            ["Punch Out↩In","punch","Recul puis retour.",function(){smoothZoom("outin");}],
-            ["Punch In↩Out","punch","Impact puis retour.",function(){smoothZoom("inout");}]
-        ]);
+        featureButton(tabEdit,"Smooth Zoom In","zoomIn",
+            "Zoom avant progressif et adouci sur les calques sélectionnés (intensité réglable dans Settings).",
+            function(){smoothZoom("in");});
+        featureButton(tabEdit,"Smooth Zoom Out","zoomOut",
+            "Zoom arrière progressif et adouci sur les calques sélectionnés.",
+            function(){smoothZoom("out");});
+        featureButton(tabEdit,"Punch Out → In","punch",
+            "Effet de recul : zoom arrière puis retour à l'échelle d'origine.",
+            function(){smoothZoom("outin");});
+        featureButton(tabEdit,"Punch In → Out","punch",
+            "Effet d'impact : zoom avant puis retour à l'échelle d'origine.",
+            function(){smoothZoom("inout");});
 
         sectionHeader(tabEdit, "SHAKES");
-        iconButtonRow(tabEdit,[
-            ["Shake Light", "shake","Shake léger (adj, non destructif).",function(){quickShake(10,15,"Light");}],
-            ["Shake Medium","shake","Shake moyen.",function(){quickShake(15,30,"Medium");}]
-        ]);
-        iconButtonRow(tabEdit,[
-            ["Shake Heavy", "shake","Gros shake.",function(){quickShake(20,50,"Heavy");}],
-            ["Impact (expr)","shake","wiggle(18,35) sur Position.",impactShake]
-        ]);
+        featureButton(tabEdit,"Shake Light","shake",
+            "Petit shake non destructif (calque d'ajustement, 10 frames).",
+            function(){quickShake(10,15,"Light");});
+        featureButton(tabEdit,"Shake Medium","shake",
+            "Shake moyen non destructif (calque d'ajustement, 10 frames).",
+            function(){quickShake(15,30,"Medium");});
+        featureButton(tabEdit,"Shake Heavy","shake",
+            "Gros shake non destructif (calque d'ajustement, 10 frames).",
+            function(){quickShake(20,50,"Heavy");});
+        featureButton(tabEdit,"Impact Shake (expression)","shake",
+            "Applique wiggle(18, 35) directement sur la Position des calques sélectionnés.",
+            impactShake);
 
         sectionHeader(tabEdit, "EFFECTS");
-        iconButtonRow(tabEdit,[
-            ["RGB Split","rgb","Vraie séparation R/G/B.",rgbSplit],
-            ["Glow Boost","glow","Glow natif.",glowBoost]
-        ]);
-        iconButtonRow(tabEdit,[
-            ["Speed Lines","lines","Lignes radiales anime.", speedLines],
-            ["Freeze Frame","freeze","Fige au playhead.", freezeFrame]
-        ]);
+        featureButton(tabEdit,"RGB Split","rgb",
+            "Sépare les canaux R/G/B du calque sélectionné en 3 copies décalées (Shift Channels + Add).",
+            rgbSplit);
+        featureButton(tabEdit,"Glow Boost","glow",
+            "Ajoute l'effet Glow natif (Threshold 60, Radius 35, Intensity 1.5).",
+            glowBoost);
+        featureButton(tabEdit,"Speed Lines","lines",
+            "Crée des lignes de vitesse radiales façon anime (Fractal Noise + Polar Coordinates).",
+            speedLines);
+        featureButton(tabEdit,"Freeze Frame","freeze",
+            "Fige le calque sélectionné au temps courant (split + time remap hold).",
+            freezeFrame);
 
         sectionHeader(tabEdit, "PROJECT");
-        iconButtonRow(tabEdit,[
-            ["Precomp","precomp","Auto Precomp sélection.",autoPrecompSelected],
-            ["Organize","folder","Range le projet.",organizeProject]
-        ]);
+        featureButton(tabEdit,"Auto Precomp Selected","precomp",
+            "Précompose la sélection dans EH_Precomp_XX (auto-incrémenté).",
+            autoPrecompSelected);
+        featureButton(tabEdit,"Organize Project","folder",
+            "Crée les dossiers standards et range tous les éléments du projet par type.",
+            organizeProject);
 
         // ---- TAB 2: TEXT ----
         var tabText = tabs.add("tab",undefined,"Text");
         tabText.orientation="column"; tabText.alignChildren=["fill","top"]; tabText.spacing=5; tabText.margins=6;
 
-        sectionHeader(tabText,"REVEAL");
-        iconButton(tabText,"Typewriter","typewriter","Caractère par caractère, opacité reveal (24 frames).",textTypewriter);
-        iconButton(tabText,"Fade Up","fadeup","Mots remontent et s'affichent (18 frames).",textFadeUp);
-        iconButton(tabText,"Word Reveal","word","Mot par mot, fondu (20 frames).",textWordReveal);
-        iconButton(tabText,"Bounce In","bounce","Caractères rebondissent en scale 0→120→100 %.",textBounceIn);
-
-        sectionHeader(tabText,"SLIDES");
-        iconButtonRow(tabText,[
-            ["◀ From Left", "slide","Slide depuis la gauche.",function(){textSlide("left");}],
-            ["From Right ▶","slide","Slide depuis la droite.",function(){textSlide("right");}]
-        ]);
-        iconButtonRow(tabText,[
-            ["▲ From Top",   "slide","Glisse depuis le haut.",function(){textSlide("top");}],
-            ["From Bottom ▼","slide","Glisse depuis le bas.",function(){textSlide("bottom");}]
-        ]);
-
-        sectionHeader(tabText,"SPECIAL");
-        iconButton(tabText,"Glitch Text","glitch","Jitter de position + clignotement par caractère (expression).",textGlitch);
-
         var note = tabText.add("statictext",undefined,
-            "⚠ Sélectionnez un calque de texte avant\nd'appliquer une animation.",
+            "⚠ Sélectionnez un calque de texte avant d'appliquer une animation.",
             {multiline:true});
         note.alignment=["fill","top"];
+
+        sectionHeader(tabText,"REVEAL");
+        featureButton(tabText,"Typewriter","typewriter",
+            "Affiche le texte caractère par caractère (opacité, 24 frames).",
+            textTypewriter);
+        featureButton(tabText,"Fade Up","fadeup",
+            "Les mots remontent de 40px en apparaissant en fondu (18 frames).",
+            textFadeUp);
+        featureButton(tabText,"Word Reveal","word",
+            "Révèle le texte mot par mot en fondu (20 frames).",
+            textWordReveal);
+        featureButton(tabText,"Bounce In","bounce",
+            "Les caractères rebondissent : scale 0% → 120% → 100% avec Easy Ease.",
+            textBounceIn);
+
+        sectionHeader(tabText,"SLIDES");
+        featureButton(tabText,"Slide From Left","slide",
+            "Le texte glisse depuis la gauche, ligne par ligne, en fondu.",
+            function(){textSlide("left");});
+        featureButton(tabText,"Slide From Right","slide",
+            "Le texte glisse depuis la droite, ligne par ligne, en fondu.",
+            function(){textSlide("right");});
+        featureButton(tabText,"Slide From Top","slide",
+            "Le texte glisse depuis le haut, ligne par ligne, en fondu.",
+            function(){textSlide("top");});
+        featureButton(tabText,"Slide From Bottom","slide",
+            "Le texte glisse depuis le bas, ligne par ligne, en fondu.",
+            function(){textSlide("bottom");});
+
+        sectionHeader(tabText,"SPECIAL");
+        featureButton(tabText,"Glitch Text","glitch",
+            "Jitter de position + clignotement d'opacité par caractère, via expressions.",
+            textGlitch);
 
         // ---- TAB 3: SOUNDS ----
         var tabSounds = tabs.add("tab",undefined,"Sounds");
@@ -1144,42 +1403,64 @@
         tabOverlays.orientation="column"; tabOverlays.alignChildren=["fill","top"]; tabOverlays.spacing=5; tabOverlays.margins=6;
 
         sectionHeader(tabOverlays,"TEXTURE");
-        iconButtonRow(tabOverlays,[
-            ["Film Grain","grain","Add Grain natif sur calque adj.",overlayFilmGrain],
-            ["Vignette",  "vignette","Vignette sombre avec masque.",overlayVignette]
-        ]);
-        iconButtonRow(tabOverlays,[
-            ["Light Leak","leak","Fuite de lumière chaude animée.",overlayLightLeak],
-            ["Dust & Scratches","dust","Rayures et poussière (Screen).",overlayDust]
-        ]);
-        iconButtonRow(tabOverlays,[
-            ["Scanlines","scan","Lignes de balayage CRT (Grid).",overlayScanlines],
-            ["VHS Glitch","vhs","Wave Warp + Noise + désaturation.",overlayVHS]
-        ]);
+        featureButton(tabOverlays,"Film Grain","grain",
+            "Ajoute l'effet Add Grain natif sur un calque d'ajustement.",
+            overlayFilmGrain);
+        featureButton(tabOverlays,"Vignette","vignette",
+            "Assombrit les bords avec un masque elliptique inversé et adouci.",
+            overlayVignette);
+        featureButton(tabOverlays,"Light Leak","leak",
+            "Fuite de lumière chaude animée (Fractal Noise, mode Add).",
+            overlayLightLeak);
+        featureButton(tabOverlays,"Dust & Scratches","dust",
+            "Rayures et poussière façon pellicule (Fractal Noise, mode Screen).",
+            overlayDust);
+        featureButton(tabOverlays,"Scanlines","scan",
+            "Lignes de balayage façon écran CRT (effet Grid, mode Multiply).",
+            overlayScanlines);
+        featureButton(tabOverlays,"VHS Glitch","vhs",
+            "Distorsion VHS : Wave Warp + Noise + désaturation (Hue/Saturation).",
+            overlayVHS);
 
         sectionHeader(tabOverlays,"LIGHT");
-        iconButton(tabOverlays,"Lens Flare","flare","Flare natif centré en mode Add.",overlayLensFlare);
+        featureButton(tabOverlays,"Lens Flare","flare",
+            "Reflet d'objectif natif, centré, en mode Add.",
+            overlayLensFlare);
 
         sectionHeader(tabOverlays,"COLOR TINT");
-        iconButtonRow(tabOverlays,[
-            ["Cinematic","tint","Ombres bleues / hautes lumières orangées.",
-                function(){overlayColorTint([0.05,0.1,0.3],[1,0.9,0.7],"Cinematic");}],
-            ["Anime Warm","tint","Chaud saturé façon anime.",
-                function(){overlayColorTint([0.2,0.05,0.1],[1,0.95,0.7],"AnimeWarm");}]
-        ]);
-        iconButtonRow(tabOverlays,[
-            ["Night Blue","tint","Ambiance nuit froide.",
-                function(){overlayColorTint([0,0.05,0.2],[0.7,0.85,1],"NightBlue");}],
-            ["Ski / Snow","tint","Ciel clair, neige lumineuse.",
-                function(){overlayColorTint([0.1,0.15,0.25],[0.95,0.98,1],"SkiSnow");}]
-        ]);
+        featureButton(tabOverlays,"Cinematic","tint",
+            "Ombres bleutées, hautes lumières orangées (Tint natif).",
+            function(){overlayColorTint([0.05,0.1,0.3],[1,0.9,0.7],"Cinematic");});
+        featureButton(tabOverlays,"Anime Warm","tint",
+            "Tons chauds et saturés façon anime.",
+            function(){overlayColorTint([0.2,0.05,0.1],[1,0.95,0.7],"AnimeWarm");});
+        featureButton(tabOverlays,"Night Blue","tint",
+            "Ambiance nocturne froide et bleutée.",
+            function(){overlayColorTint([0,0.05,0.2],[0.7,0.85,1],"NightBlue");});
+        featureButton(tabOverlays,"Ski / Snow","tint",
+            "Ciel clair et neige lumineuse, idéal edits ski/montagne.",
+            function(){overlayColorTint([0.1,0.15,0.25],[0.95,0.98,1],"SkiSnow");});
+
+        // ---- TAB 5: AI CHAT ----
+        var tabChat = tabs.add("tab",undefined,"AI Chat");
+        buildChatTab(tabChat);
 
         // ---- Footer (outside tabs) ----
         var footer = panel.add("group");
         footer.orientation="row"; footer.alignment=["fill","bottom"]; footer.spacing=6;
 
-        iconButton(footer,"Settings","gear","Thème, couleurs, zoom, licence.",
-            function(){openSettingsDialog(panel);});
+        var btnSettings = footer.add("button", undefined, "");
+        btnSettings.preferredSize=[34,26];
+        btnSettings.onDraw = function() {
+            var g=this.graphics, ac=accent();
+            g.newPath(); g.rectPath(0,0,this.size[0],this.size[1]);
+            g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR, theme().panel.concat(1)));
+            var pen=g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],1],1.5);
+            ICONS.gear(g,(this.size[0]-14)/2,(this.size[1]-14)/2,14,pen);
+        };
+        btnSettings.helpTip = "Thème, couleurs, zoom, licence, AI Bridge.";
+        btnSettings.onClick = function(){openSettingsDialog(panel);};
+        allButtons.push(btnSettings);
 
         var verLbl = panel.add("statictext",undefined,
             "v"+SCRIPT_VERSION+(isLicensed()?"  •  ✓ Licensed":"  •  Trial"));

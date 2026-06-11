@@ -47,6 +47,32 @@ See [INSTALLATION.md](INSTALLATION.md) for full instructions.
 | **Speed Lines (anime)** | Radial anime-style speed lines overlay — Fractal Noise + Polar Coordinates, Screen blend, animated. 100 % native effects. |
 | **Freeze Frame** | Splits the selected layer at the playhead and holds the frame with time remapping. |
 
+### AI Chat (Tab "AI Chat")
+
+Type a request in plain language and the assistant applies the corresponding action directly to your composition — no menus to dig through.
+
+**Local mode (works out of the box, no setup):** a built-in keyword matcher recognizes phrases like:
+- "ajoute un white flash" / "add a white flash"
+- "zoom in sur la sélection"
+- "applique un glitch sur le texte"
+- "ajoute un light leak"
+- "organise le projet"
+
+**AI Bridge mode (optional, for a real LLM):** if you want Claude/GPT/etc. to interpret more complex or ambiguous requests, run a small local server and enter its `host:port` in Settings. Protocol:
+
+- The panel opens a plain TCP socket to `host:port` and sends one line:
+  ```json
+  {"message": "ajoute un zoom in puis un glitch sur le texte"}
+  ```
+- Your server replies with one line:
+  ```json
+  {"action": "zoomIn", "reply": "Zoom in appliqué !"}
+  ```
+- `action` must be one of the keys in the `DISPATCH` table inside `EditHelperPanel.jsx` (e.g. `whiteFlash`, `zoomIn`, `rgbSplit`, `textGlitch`, `overlayLightLeak`, …). The panel executes the matching function and shows `reply` in the chat.
+- If the bridge is unreachable, returns invalid JSON, or `action` isn't recognized, the panel automatically falls back to local keyword matching.
+
+> ExtendScript's `Socket` object only supports plain TCP (no TLS), so the bridge must be a small local process — e.g. a Node.js or Python script on `127.0.0.1` that calls the Claude/OpenAI API over HTTPS on your behalf and forwards a one-line JSON response back to the panel.
+
 ### Customization & License
 
 - **Settings & Theme** button at the bottom of the panel: Dark/Light theme, accent color (6 presets or any custom hex), zoom intensity and duration. All settings persist between sessions.

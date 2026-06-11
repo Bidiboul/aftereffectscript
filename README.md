@@ -54,6 +54,20 @@ See [INSTALLATION.md](INSTALLATION.md) for full instructions.
 | **Auto Music Markers** | Opens a dialog to enter a BPM, marker interval (every 1/2/4/8 beats) and start time, then drops composition markers ("Beat") across the whole comp duration — great for cutting on the beat. Optionally clears existing markers first. |
 | **Sound folder browser** | Choose a local folder; lists all `.wav/.mp3/.aif/.aiff/.m4a/.ogg/.flac` files. Click or double-click to import and place at the current time. |
 
+### Beat Sync (Tab "Sounds")
+
+Apply effects automatically on every composition marker — pairs with **Auto Music Markers**.
+
+| Button | Description |
+|---|---|
+| **Flash on Every Beat** | White flash (6 frames) on every marker. |
+| **Shake on Markers** | Quick Shake Medium (non-destructive) on every marker. |
+| **Zoom Punch on Beats** | Punch In→Out on the selected layers at every marker. |
+| **RGB Split on First Beat** | Applies RGB Split once, synced to the first marker (avoids stacking duplicate layers per beat). |
+| **Anime Beat Pack** | Combo: Flash + Shake + Zoom Punch (if a layer is selected) on every marker. |
+
+> If more than 30 markers are detected, a confirmation dialog warns about the number of layers that will be created.
+
 ### AI Chat (Tab "AI Chat")
 
 Type a request in plain language and the assistant applies the corresponding action directly to your composition — no menus to dig through.
@@ -92,6 +106,9 @@ Type a request in plain language and the assistant applies the corresponding act
 | **Auto Precomp Selected** | Pre-composes selected layers into a new composition named `EH_Precomp_01` (auto-increments if the name already exists). |
 | **Organize Project** | Creates five standard folders (`01_Comps`, `02_Footage`, `03_Audio`, `04_Precomps`, `05_Solids`) and moves every project item into the appropriate folder based on its type. |
 | **Clean EH_ Layers** | Removes every layer in the active comp whose name starts with `EH_` (all panel-generated layers), with a confirmation showing how many were removed. |
+| **Find Missing Footage** | Lists every project item with missing source media. |
+| **Remove Unused Footage** | Finds footage items not used in any composition and removes them after confirmation. |
+| **Add to Render Queue** | Adds the active composition to After Effects' Render Queue. |
 
 ### Color Grading (Tab "Overlays")
 

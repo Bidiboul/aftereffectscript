@@ -1,9 +1,17 @@
 /**
- * Edit Helper Panel v0.5.1
+ * Edit Helper Panel v0.6
  * ScriptUI Panel for Adobe After Effects (2024+)
  *
  * Place in: [AE Install]/Scripts/ScriptUI Panels/
  * Open via: Window > Edit Helper Panel
+ *
+ * New in v0.6:
+ *  - Beat Sync tools (Sounds tab): apply Flash, Shake, Zoom Punch, RGB Split
+ *    or a full "Anime Beat Pack" combo on every comp marker — pairs with
+ *    Auto Music Markers for instant cut-on-the-beat edits.
+ *  - Render Queue helper: "Add to Render Queue" button.
+ *  - Project Cleaner Pro: "Find Missing Footage" and "Remove Unused
+ *    Footage" tools.
  *
  * New in v0.5.1:
  *  - Auto Music Markers: places composition markers on the beat based on
@@ -30,7 +38,7 @@
 (function EditHelperPanel(thisObj) {
 
     var SCRIPT_NAME    = "Edit Helper Panel";
-    var SCRIPT_VERSION = "0.5.1";
+    var SCRIPT_VERSION = "0.6";
     var SETTINGS_KEY   = "EditHelperPanel";
 
     // ============================================================
@@ -985,6 +993,162 @@
         dlg.center(); dlg.show();
     }
 
+    /** Returns a sorted array of all composition marker times (seconds). */
+    function getMarkerTimes(comp) {
+        var mp = comp.markerProperty, times = [];
+        for (var i = 1; i <= mp.numKeys; i++) times.push(mp.keyTime(i));
+        times.sort(function(a,b){ return a-b; });
+        return times;
+    }
+    function requireMarkers(comp) {
+        var times = getMarkerTimes(comp);
+        if (!times.length) {
+            alert(SCRIPT_NAME+"\n\nAucun marqueur trouvé.\nUtilisez d'abord \"Auto Music Markers\".");
+            return null;
+        }
+        if (times.length > 30 && !confirm(
+            SCRIPT_NAME+"\n\n"+times.length+" marqueurs détectés.\n"+
+            "Cela va créer "+times.length+" calque(s). Continuer ?")) return null;
+        return times;
+    }
+
+    // ============================================================
+    //  FEATURES — BEAT SYNC (apply effects on every comp marker)
+    // ============================================================
+
+    function beatFlash(color) {
+        withUndo("Beat Flash", function() {
+            var comp = requireActiveComp();
+            var times = requireMarkers(comp);
+            if (!times) return;
+            var name = color==="white" ? "EH_White_Flash" : "EH_Black_Flash";
+            var col  = color==="white" ? [1,1,1] : [0,0,0];
+            for (var i = 0; i < times.length; i++) {
+                var s = times[i], e = Math.min(s + framesToSeconds(6, comp), comp.duration);
+                if (e <= s) continue;
+                var fl = comp.layers.addSolid(col, name, comp.width, comp.height, comp.pixelAspect, e-s);
+                fl.inPoint = s; fl.name = name;
+                var op = fl.property("Transform").property("Opacity");
+                op.setValueAtTime(s, 100); op.setValueAtTime(e, 0);
+                fl.moveToBeginning();
+            }
+        });
+    }
+
+    function beatShake(freq, amp, label) {
+        withUndo("Beat Shake "+label, function() {
+            var comp = requireActiveComp();
+            var times = requireMarkers(comp);
+            if (!times) return;
+            for (var i = 0; i < times.length; i++) {
+                var s = times[i], e = Math.min(s + framesToSeconds(10, comp), comp.duration);
+                if (e <= s) continue;
+                var adj = comp.layers.addSolid([0.5,0.5,0.5],"EH_Shake_"+label,
+                    comp.width,comp.height,comp.pixelAspect,e-s);
+                adj.adjustmentLayer=true; adj.inPoint=s; adj.name="EH_Shake_"+label; adj.moveToBeginning();
+                var fx = adj.Effects.addProperty("ADBE Geometry2");
+                try { fx.property("ADBE Geometry2-0005").setValue(100+amp/8); } catch(e2){}
+                try { fx.property("ADBE Geometry2-0006").setValue(100+amp/8); } catch(e2){}
+                fx.property("ADBE Geometry2-0002").expression = "wiggle("+freq+", "+amp+")";
+            }
+        });
+    }
+
+    function beatZoomPunch() {
+        withUndo("Beat Zoom Punch", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Beat Zoom Punch")) return;
+            var times = requireMarkers(comp);
+            if (!times) return;
+            var amt = settings.zoomAmount / 100;
+            var half = framesToSeconds(settings.zoomFrames, comp);
+            var sel = getSelectedLayers(comp);
+            for (var m = 0; m < times.length; m++) {
+                var t1 = times[m], t2 = t1+half, t3 = t2+half;
+                if (t3 > comp.duration) continue;
+                for (var i = 0; i < sel.length; i++) {
+                    var scale = sel[i].property("Transform").property("Scale");
+                    var b = scale.valueAtTime(t1, false);
+                    function sc(f) { var v=[]; for(var j=0;j<b.length;j++) v.push(b[j]*f); return v; }
+                    scale.setValueAtTime(t1,b); scale.setValueAtTime(t2,sc(1+amt)); scale.setValueAtTime(t3,b);
+                    easeLastKeys(scale,3);
+                }
+            }
+        });
+    }
+
+    function beatRGBSplitOnce() {
+        withUndo("Beat RGB Split", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Beat RGB Split")) return;
+            var times = requireMarkers(comp);
+            if (!times) return;
+            // RGB Split duplicates layers permanently — only sync to the first marker
+            // to avoid creating dozens of duplicate layer stacks.
+            comp.time = times[0];
+            rgbSplit();
+        });
+    }
+
+    function beatAnimePack() {
+        withUndo("Anime Beat Pack", function() {
+            var comp = requireActiveComp();
+            var times = requireMarkers(comp);
+            if (!times) return;
+            beatFlash("white");
+            beatShake(15, 30, "Medium");
+            if (getSelectedLayers(comp).length > 0) beatZoomPunch();
+        });
+    }
+
+    // ============================================================
+    //  FEATURES — RENDER QUEUE HELPER
+    // ============================================================
+
+    function addToRenderQueue() {
+        withUndo("Add to Render Queue", function() {
+            var comp = requireActiveComp();
+            app.project.renderQueue.items.add(comp);
+            alert(SCRIPT_NAME+"\n\n\""+comp.name+"\" ajouté à la Render Queue.");
+        });
+    }
+
+    // ============================================================
+    //  FEATURES — PROJECT CLEANER PRO
+    // ============================================================
+
+    function findMissingFootage() {
+        var missing = [];
+        for (var i = 1; i <= app.project.items.length; i++) {
+            var it = app.project.items[i];
+            if (it instanceof FootageItem && it.footageMissing) missing.push(it.name);
+        }
+        if (!missing.length) {
+            alert(SCRIPT_NAME+"\n\nAucun média manquant.");
+        } else {
+            alert(SCRIPT_NAME+"\n\nMédia(s) manquant(s) :\n\n- "+missing.join("\n- "));
+        }
+    }
+
+    function removeUnusedFootage() {
+        var unused = [];
+        for (var i = 1; i <= app.project.items.length; i++) {
+            var it = app.project.items[i];
+            if (it instanceof FootageItem && it.usedIn.length === 0) unused.push(it);
+        }
+        if (!unused.length) {
+            alert(SCRIPT_NAME+"\n\nAucun média inutilisé.");
+            return;
+        }
+        var names = []; for (var j=0;j<unused.length;j++) names.push(unused[j].name);
+        if (!confirm(SCRIPT_NAME+"\n\nSupprimer "+unused.length+" média(s) inutilisé(s) ?\n\n- "+names.join("\n- ")))
+            return;
+        withUndo("Remove Unused Footage", function() {
+            for (var k=0;k<unused.length;k++) unused[k].remove();
+            alert(SCRIPT_NAME+"\n\n"+unused.length+" média(s) inutilisé(s) supprimé(s).");
+        });
+    }
+
     // ============================================================
     //  FEATURES — SEQUENCE TEMPLATES (one-click combos)
     // ============================================================
@@ -1086,7 +1250,15 @@
         templateAnimeImpact: { run: templateAnimeImpact, keywords: ["anime impact","template anime"] },
         templateGlitchTransition: { run: templateGlitchTransition, keywords: ["glitch transition","template glitch"] },
         templateCinematicReveal: { run: templateCinematicReveal, keywords: ["cinematic reveal","template cinematic"] },
-        autoMusicMarkers: { run: autoMusicMarkers, keywords: ["marqueur musique","music marker","marqueurs musicaux","beat marker","marqueur bpm"] }
+        autoMusicMarkers: { run: autoMusicMarkers, keywords: ["marqueur musique","music marker","marqueurs musicaux","beat marker","marqueur bpm"] },
+        beatFlash       : { run: function(){beatFlash("white");}, keywords: ["flash on every beat","flash sur chaque beat","flash sur les marqueurs"] },
+        beatShake       : { run: function(){beatShake(15,30,"Medium");}, keywords: ["shake on markers","shake sur les marqueurs","shake on beat"] },
+        beatZoomPunch   : { run: beatZoomPunch, keywords: ["zoom on markers","zoom sur les marqueurs","zoom punch on beat"] },
+        beatRGBSplit    : { run: beatRGBSplitOnce, keywords: ["rgb split on markers","rgb split sur les marqueurs"] },
+        beatAnimePack   : { run: beatAnimePack, keywords: ["anime beat pack","beat pack anime","pack de beats"] },
+        addToRenderQueue: { run: addToRenderQueue, keywords: ["render queue","ajoute au rendu","add to render queue"] },
+        findMissingFootage: { run: findMissingFootage, keywords: ["missing footage","media manquant","médias manquants"] },
+        removeUnusedFootage: { run: removeUnusedFootage, keywords: ["unused footage","media inutilise","médias inutilisés"] }
     };
 
     /**
@@ -1202,7 +1374,10 @@
         combo:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s*.55,s*.55);g.strokePath(p);g.newPath();g.ellipsePath(x+s*.45,y+s*.45,s*.55,s*.55);g.strokePath(p);},
         gradeIcon:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s,s);g.strokePath(p);g.newPath();g.moveTo(x+s/2,y);g.lineTo(x+s/2,y+s);g.strokePath(p);g.newPath();g.moveTo(x,y+s/2);g.lineTo(x+s,y+s/2);g.strokePath(p);},
         captionIcon:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.15,s,s*.55);g.strokePath(p);g.newPath();g.rectPath(x+s*.15,y+s*.85,s*.7,s*.12);g.strokePath(p);},
-        marker:function(g,x,y,s,p){g.newPath();g.moveTo(x+s*.5,y);g.lineTo(x+s,y+s*.35);g.lineTo(x+s*.5,y+s*.7);g.lineTo(x,y+s*.35);g.closePath();g.strokePath(p);g.newPath();g.moveTo(x+s*.5,y+s*.7);g.lineTo(x+s*.5,y+s);g.strokePath(p);}
+        marker:function(g,x,y,s,p){g.newPath();g.moveTo(x+s*.5,y);g.lineTo(x+s,y+s*.35);g.lineTo(x+s*.5,y+s*.7);g.lineTo(x,y+s*.35);g.closePath();g.strokePath(p);g.newPath();g.moveTo(x+s*.5,y+s*.7);g.lineTo(x+s*.5,y+s);g.strokePath(p);},
+        beat:function(g,x,y,s,p){var bars=[.3,.7,.45,.9,.6];for(var i=0;i<bars.length;i++){g.newPath();g.moveTo(x+s*i/(bars.length-1),y+s);g.lineTo(x+s*i/(bars.length-1),y+s*(1-bars[i]));g.strokePath(p);}},
+        renderIcon:function(g,x,y,s,p){g.newPath();g.rectPath(x,y,s,s*.75);g.strokePath(p);g.newPath();g.moveTo(x+s*.35,y+s*.85);g.lineTo(x+s*.5,y+s);g.lineTo(x+s*.65,y+s*.85);g.strokePath(p);g.newPath();g.moveTo(x+s*.5,y+s*.15);g.lineTo(x+s*.5,y+s*.95);g.strokePath(p);},
+        searchIcon:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s*.65,s*.65);g.strokePath(p);g.newPath();g.moveTo(x+s*.55,y+s*.55);g.lineTo(x+s,y+s);g.strokePath(p);}
     };
 
     // ============================================================
@@ -1388,6 +1563,23 @@
         featureButton(grp,"Auto Music Markers","marker",
             "Place des marqueurs de composition à chaque temps (beat) selon le BPM, sur toute la durée de la comp.",
             autoMusicMarkers);
+
+        sectionHeader(grp, "BEAT SYNC");
+        featureButton(grp,"Flash on Every Beat","beat",
+            "Ajoute un flash blanc (6 frames) sur chaque marqueur de la composition.",
+            function(){beatFlash("white");});
+        featureButton(grp,"Shake on Markers","beat",
+            "Ajoute un Quick Shake Medium non destructif sur chaque marqueur.",
+            function(){beatShake(15,30,"Medium");});
+        featureButton(grp,"Zoom Punch on Beats","beat",
+            "Applique un Punch In→Out sur les calques sélectionnés à chaque marqueur.",
+            beatZoomPunch);
+        featureButton(grp,"RGB Split on First Beat","beat",
+            "Applique le RGB Split sur les calques sélectionnés au premier marqueur (évite les doublons).",
+            beatRGBSplitOnce);
+        featureButton(grp,"Anime Beat Pack","beat",
+            "Combo : Flash + Shake Medium + Zoom Punch (si sélection) sur chaque marqueur.",
+            beatAnimePack);
 
         sectionHeader(grp, "DOSSIER DE SONS");
 
@@ -1589,6 +1781,15 @@
         featureButton(tabEdit,"Clean EH_ Layers","trash",
             "Supprime tous les calques générés par le panel (préfixe EH_) dans la comp active.",
             removeEHLayers);
+        featureButton(tabEdit,"Find Missing Footage","searchIcon",
+            "Liste tous les médias manquants dans le projet.",
+            findMissingFootage);
+        featureButton(tabEdit,"Remove Unused Footage","trash",
+            "Supprime (avec confirmation) tous les médias non utilisés dans le projet.",
+            removeUnusedFootage);
+        featureButton(tabEdit,"Add to Render Queue","renderIcon",
+            "Ajoute la composition active à la Render Queue d'After Effects.",
+            addToRenderQueue);
 
         // ---- TAB 2: TEXT ----
         var tabText = tabs.add("tab",undefined,"Text");

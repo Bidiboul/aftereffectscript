@@ -6,6 +6,24 @@ Format: `[Version] — YYYY-MM-DD`
 
 ---
 
+## [0.6.0] — 2026-06-11
+
+### Added — Beat Sync, Render Queue & Project Cleaner Pro
+
+- **Beat Sync** (Sounds tab, new "BEAT SYNC" section): apply effects on every composition marker placed by Auto Music Markers.
+  - **Flash on Every Beat** — white flash (6 frames) on each marker.
+  - **Shake on Markers** — Quick Shake Medium (non-destructive) on each marker.
+  - **Zoom Punch on Beats** — Punch In→Out on selected layers at each marker.
+  - **RGB Split on First Beat** — applies RGB Split once, synced to the first marker (avoids creating duplicate layer stacks per beat).
+  - **Anime Beat Pack** — combo of Flash + Shake + Zoom Punch on every marker.
+  - Confirmation prompt if more than 30 markers are detected (large layer count).
+- **Add to Render Queue** (Edit tab, PROJECT section): adds the active composition to After Effects' Render Queue.
+- **Find Missing Footage** (Edit tab, PROJECT section): lists all project items with missing source media.
+- **Remove Unused Footage** (Edit tab, PROJECT section): finds and removes (with confirmation) footage items not used in any composition.
+- All new actions are available in the AI Chat assistant.
+
+---
+
 ## [0.5.1] — 2026-06-11
 
 ### Added — Auto Music Markers

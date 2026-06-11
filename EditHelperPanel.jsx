@@ -1,9 +1,16 @@
 /**
- * Edit Helper Panel v0.4
+ * Edit Helper Panel v0.5
  * ScriptUI Panel for Adobe After Effects (2024+)
  *
  * Place in: [AE Install]/Scripts/ScriptUI Panels/
  * Open via: Window > Edit Helper Panel
+ *
+ * New in v0.5:
+ *  - Color Grading presets (Teal & Orange, Moody Cinematic, Pastel Anime,
+ *    High Contrast B&W) in the Overlays tab.
+ *  - TikTok Caption Style for text layers.
+ *  - Clean EH_ Layers project cleanup tool.
+ *  - New "Templates" tab with 4 one-click sequence combos.
  *
  * New in v0.4:
  *  - Full UI overhaul: every action is now a real ScriptUI Button (always
@@ -19,7 +26,7 @@
 (function EditHelperPanel(thisObj) {
 
     var SCRIPT_NAME    = "Edit Helper Panel";
-    var SCRIPT_VERSION = "0.4";
+    var SCRIPT_VERSION = "0.5";
     var SETTINGS_KEY   = "EditHelperPanel";
 
     // ============================================================
@@ -807,6 +814,138 @@
     }
 
     // ============================================================
+    //  FEATURES — COLOR GRADING (native: Brightness&Contrast + Hue/Sat + Tint)
+    // ============================================================
+
+    /**
+     * Applies a one-click grading look on a new adjustment layer using only
+     * native effects: Brightness & Contrast, Hue/Saturation, and an optional
+     * Tint (shadows/highlights split-tone).
+     */
+    function applyGrade(label, brightness, contrast, saturation, tintBlack, tintWhite, tintAmount) {
+        withUndo("Grade: "+label, function() {
+            var comp = requireActiveComp();
+            var adj = addOverlayAdj(comp, "EH_Grade_"+label);
+
+            var bc = adj.Effects.addProperty("ADBE Brightness & Contrast 2");
+            try { bc.property("ADBE Brightness & Contrast 2-0001").setValue(brightness); } catch(e){}
+            try { bc.property("ADBE Brightness & Contrast 2-0002").setValue(contrast);   } catch(e){}
+
+            var hs = adj.Effects.addProperty("ADBE HUE SATURATION");
+            try { hs.property("ADBE HUE SATURATION-0002").setValue(saturation); } catch(e){}
+
+            if (tintBlack) {
+                var tint = adj.Effects.addProperty("ADBE Tint");
+                try {
+                    tint.property("ADBE Tint-0002").setValue(tintBlack);
+                    tint.property("ADBE Tint-0003").setValue(tintWhite);
+                    tint.property("ADBE Tint-0004").setValue(tintAmount);
+                } catch(e) {}
+            }
+        });
+    }
+
+    function gradeTealOrange()  { applyGrade("TealOrange", 0, 15, 20, [0,0.15,0.2], [1,0.75,0.4], 35); }
+    function gradeMoody()       { applyGrade("Moody", -10, 25, -20, [0.02,0.05,0.15], [0.9,0.85,0.8], 30); }
+    function gradePastelAnime() { applyGrade("PastelAnime", 8, -10, 15, [0.15,0.05,0.2], [1,0.9,0.95], 20); }
+    function gradeHighContrastBW() { applyGrade("HighContrastBW", 0, 40, -100, null, null, 0); }
+
+    // ============================================================
+    //  FEATURES — CAPTION STYLE (TikTok-style text styling)
+    // ============================================================
+
+    /**
+     * Applies a TikTok-style caption look to selected text layers:
+     * white fill (left as authored), black stroke + drop shadow via native
+     * Layer Styles, plus the Bounce In text animator for punchy reveals.
+     */
+    function captionStyle() {
+        withUndo("Text: TikTok Caption", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Caption Style")) return;
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++) {
+                var layer = sel[i];
+                if (!getTextAnimators(layer)) {
+                    alert(SCRIPT_NAME+"\n\nCaption Style : \""+layer.name+"\" n'est pas un calque de texte.");
+                    continue;
+                }
+                try {
+                    var styles = layer.property("ADBE Layer Styles");
+
+                    var stroke = styles.property("ADBE Stroke");
+                    stroke.enabled = true;
+                    stroke.property("ADBE Stroke Color").setValue([0,0,0]);
+                    stroke.property("ADBE Stroke Size").setValue(8);
+
+                    var shadow = styles.property("ADBE Drop Shadow");
+                    shadow.enabled = true;
+                    shadow.property("ADBE Drop Shadow Opacity").setValue(180);
+                    shadow.property("ADBE Drop Shadow Softness").setValue(8);
+                    shadow.property("ADBE Drop Shadow Distance").setValue(4);
+                } catch(e) {
+                    // Layer Styles match-names can vary slightly between AE
+                    // versions — the bounce animation below still applies.
+                }
+            }
+        });
+        // Add the bounce-in reveal as a separate, already-undo-wrapped step.
+        textBounceIn();
+    }
+
+    // ============================================================
+    //  FEATURES — PROJECT CLEANUP
+    // ============================================================
+
+    /** Removes every layer in the active comp whose name starts with "EH_". */
+    function removeEHLayers() {
+        withUndo("Clean EH_ Layers", function() {
+            var comp = requireActiveComp();
+            var removed = 0;
+            for (var i = comp.numLayers; i >= 1; i--) {
+                var layer = comp.layer(i);
+                if (layer.name.indexOf("EH_") === 0) { layer.remove(); removed++; }
+            }
+            alert(SCRIPT_NAME+"\n\n"+removed+" calque(s) EH_ supprimé(s).");
+        });
+    }
+
+    // ============================================================
+    //  FEATURES — SEQUENCE TEMPLATES (one-click combos)
+    // ============================================================
+
+    /** Intro Punch: punch zoom + medium shake + white flash + glow. */
+    function templateIntroPunch() {
+        smoothZoom("inout");
+        quickShake(15, 30, "Medium");
+        createFlash("white");
+        glowBoost();
+    }
+
+    /** Anime Impact: black flash + speed lines + heavy shake + zoom in. */
+    function templateAnimeImpact() {
+        createFlash("black");
+        speedLines();
+        quickShake(20, 50, "Heavy");
+        smoothZoom("in");
+    }
+
+    /** Glitch Transition: RGB split + VHS overlay + medium shake. */
+    function templateGlitchTransition() {
+        rgbSplit();
+        overlayVHS();
+        quickShake(15, 30, "Medium");
+    }
+
+    /** Cinematic Reveal: zoom in + cinematic tint + vignette + film grain. */
+    function templateCinematicReveal() {
+        smoothZoom("in");
+        overlayColorTint([0.05,0.1,0.3],[1,0.9,0.7],"Cinematic");
+        overlayVignette();
+        overlayFilmGrain();
+    }
+
+    // ============================================================
     //  AI ASSISTANT — DISPATCH TABLE + CHAT
     // ============================================================
     //
@@ -861,7 +1000,17 @@
         tintCinematic   : { run: function(){overlayColorTint([0.05,0.1,0.3],[1,0.9,0.7],"Cinematic");}, keywords: ["cinematic","tint cinema"] },
         tintAnime       : { run: function(){overlayColorTint([0.2,0.05,0.1],[1,0.95,0.7],"AnimeWarm");}, keywords: ["anime warm","tint anime"] },
         tintNight       : { run: function(){overlayColorTint([0,0.05,0.2],[0.7,0.85,1],"NightBlue");}, keywords: ["night blue","tint nuit"] },
-        tintSki         : { run: function(){overlayColorTint([0.1,0.15,0.25],[0.95,0.98,1],"SkiSnow");}, keywords: ["ski","snow","neige"] }
+        tintSki         : { run: function(){overlayColorTint([0.1,0.15,0.25],[0.95,0.98,1],"SkiSnow");}, keywords: ["ski","snow","neige"] },
+        gradeTealOrange : { run: gradeTealOrange, keywords: ["teal and orange","teal & orange","teal orange"] },
+        gradeMoody      : { run: gradeMoody, keywords: ["moody","cinematic grade","grade moody"] },
+        gradePastelAnime: { run: gradePastelAnime, keywords: ["pastel anime","pastel"] },
+        gradeHighContrastBW: { run: gradeHighContrastBW, keywords: ["black and white","noir et blanc","high contrast"] },
+        captionStyle    : { run: captionStyle, keywords: ["caption","sous-titre tiktok","tiktok caption"] },
+        removeEHLayers  : { run: removeEHLayers, keywords: ["clean","nettoyer","supprime les calques eh","clean up"] },
+        templateIntroPunch: { run: templateIntroPunch, keywords: ["intro punch","template intro"] },
+        templateAnimeImpact: { run: templateAnimeImpact, keywords: ["anime impact","template anime"] },
+        templateGlitchTransition: { run: templateGlitchTransition, keywords: ["glitch transition","template glitch"] },
+        templateCinematicReveal: { run: templateCinematicReveal, keywords: ["cinematic reveal","template cinematic"] }
     };
 
     /**
@@ -972,7 +1121,11 @@
         dust:function(g,x,y,s,p){g.newPath();g.moveTo(x+s*.3,y);g.lineTo(x+s*.31,y+s);g.strokePath(p);g.newPath();g.moveTo(x+s*.7,y+s*.1);g.lineTo(x+s*.68,y+s*.9);g.strokePath(p);g.newPath();g.moveTo(x+s*.1,y+s*.3);g.lineTo(x+s*.12,y+s*.8);g.strokePath(p);},
         tint:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s,s);g.strokePath(p);g.newPath();g.moveTo(x,y+s*.5);g.lineTo(x+s,y+s*.5);g.strokePath(p);},
         ai:function(g,x,y,s,p){g.newPath();g.rectPath(x,y,s,s*.75);g.strokePath(p);g.newPath();g.moveTo(x+s*.3,y+s*.75);g.lineTo(x+s*.15,y+s);g.lineTo(x+s*.45,y+s*.75);g.closePath();g.strokePath(p);g.newPath();g.ellipsePath(x+s*.22,y+s*.25,s*.12,s*.12);g.strokePath(p);g.newPath();g.ellipsePath(x+s*.66,y+s*.25,s*.12,s*.12);g.strokePath(p);},
-        send:function(g,x,y,s,p){g.newPath();g.moveTo(x,y+s*.5);g.lineTo(x+s,y);g.lineTo(x+s*.65,y+s*.5);g.lineTo(x+s,y+s);g.closePath();g.strokePath(p);}
+        send:function(g,x,y,s,p){g.newPath();g.moveTo(x,y+s*.5);g.lineTo(x+s,y);g.lineTo(x+s*.65,y+s*.5);g.lineTo(x+s,y+s);g.closePath();g.strokePath(p);},
+        trash:function(g,x,y,s,p){g.newPath();g.rectPath(x+s*.2,y+s*.25,s*.6,s*.7);g.strokePath(p);g.newPath();g.moveTo(x,y+s*.2);g.lineTo(x+s,y+s*.2);g.strokePath(p);g.newPath();g.moveTo(x+s*.35,y+s*.05);g.lineTo(x+s*.65,y+s*.05);g.lineTo(x+s*.65,y+s*.2);g.lineTo(x+s*.35,y+s*.2);g.closePath();g.strokePath(p);g.newPath();g.moveTo(x+s*.35,y+s*.4);g.lineTo(x+s*.35,y+s*.8);g.strokePath(p);g.newPath();g.moveTo(x+s*.65,y+s*.4);g.lineTo(x+s*.65,y+s*.8);g.strokePath(p);},
+        combo:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s*.55,s*.55);g.strokePath(p);g.newPath();g.ellipsePath(x+s*.45,y+s*.45,s*.55,s*.55);g.strokePath(p);},
+        gradeIcon:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s,s);g.strokePath(p);g.newPath();g.moveTo(x+s/2,y);g.lineTo(x+s/2,y+s);g.strokePath(p);g.newPath();g.moveTo(x,y+s/2);g.lineTo(x+s,y+s/2);g.strokePath(p);},
+        captionIcon:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.15,s,s*.55);g.strokePath(p);g.newPath();g.rectPath(x+s*.15,y+s*.85,s*.7,s*.12);g.strokePath(p);}
     };
 
     // ============================================================
@@ -1351,6 +1504,9 @@
         featureButton(tabEdit,"Organize Project","folder",
             "Crée les dossiers standards et range tous les éléments du projet par type.",
             organizeProject);
+        featureButton(tabEdit,"Clean EH_ Layers","trash",
+            "Supprime tous les calques générés par le panel (préfixe EH_) dans la comp active.",
+            removeEHLayers);
 
         // ---- TAB 2: TEXT ----
         var tabText = tabs.add("tab",undefined,"Text");
@@ -1393,6 +1549,9 @@
         featureButton(tabText,"Glitch Text","glitch",
             "Jitter de position + clignotement d'opacité par caractère, via expressions.",
             textGlitch);
+        featureButton(tabText,"TikTok Caption Style","captionIcon",
+            "Contour noir + ombre portée sur le texte sélectionné, plus une animation Bounce In.",
+            captionStyle);
 
         // ---- TAB 3: SOUNDS ----
         var tabSounds = tabs.add("tab",undefined,"Sounds");
@@ -1441,7 +1600,39 @@
             "Ciel clair et neige lumineuse, idéal edits ski/montagne.",
             function(){overlayColorTint([0.1,0.15,0.25],[0.95,0.98,1],"SkiSnow");});
 
-        // ---- TAB 5: AI CHAT ----
+        sectionHeader(tabOverlays,"COLOR GRADING");
+        featureButton(tabOverlays,"Teal & Orange","gradeIcon",
+            "Look cinéma classique : ombres bleu-vert, hautes lumières orangées + contraste.",
+            gradeTealOrange);
+        featureButton(tabOverlays,"Moody Cinematic","gradeIcon",
+            "Tons sombres et désaturés, contraste élevé pour une ambiance dramatique.",
+            gradeMoody);
+        featureButton(tabOverlays,"Pastel Anime","gradeIcon",
+            "Couleurs douces et lumineuses, saturation augmentée façon anime.",
+            gradePastelAnime);
+        featureButton(tabOverlays,"High Contrast B&W","gradeIcon",
+            "Désaturation totale avec contraste renforcé.",
+            gradeHighContrastBW);
+
+        // ---- TAB 5: TEMPLATES ----
+        var tabTemplates = tabs.add("tab",undefined,"Templates");
+        tabTemplates.orientation="column"; tabTemplates.alignChildren=["fill","top"]; tabTemplates.spacing=5; tabTemplates.margins=6;
+
+        sectionHeader(tabTemplates,"SEQUENCE TEMPLATES");
+        featureButton(tabTemplates,"Intro Punch","combo",
+            "Combo : Punch In-Out + Shake Medium + White Flash + Glow Boost.",
+            templateIntroPunch);
+        featureButton(tabTemplates,"Anime Impact","combo",
+            "Combo : Black Flash + Speed Lines + Shake Heavy + Smooth Zoom In.",
+            templateAnimeImpact);
+        featureButton(tabTemplates,"Glitch Transition","combo",
+            "Combo : RGB Split + VHS Glitch + Shake Medium.",
+            templateGlitchTransition);
+        featureButton(tabTemplates,"Cinematic Reveal","combo",
+            "Combo : Smooth Zoom In + Tint Cinematic + Vignette + Film Grain.",
+            templateCinematicReveal);
+
+        // ---- TAB 6: AI CHAT ----
         var tabChat = tabs.add("tab",undefined,"AI Chat");
         buildChatTab(tabChat);
 

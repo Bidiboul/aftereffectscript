@@ -6,6 +6,22 @@ Format: `[Version] — YYYY-MM-DD`
 
 ---
 
+## [0.5.0] — 2026-06-11
+
+### Added — Color Grading, Templates & Project Tools
+
+- **Color Grading presets** (Overlays tab, new "COLOR GRADING" section): **Teal & Orange**, **Moody Cinematic**, **Pastel Anime**, **High Contrast B&W** — each adds an `EH_Grade_<name>` adjustment layer with native Brightness & Contrast 2, Hue/Saturation, and Tint effects.
+- **TikTok Caption Style** (Text tab): applies a black Stroke + Drop Shadow (Layer Styles) to selected text layers and runs the Bounce In animation.
+- **Clean EH_ Layers** (Edit tab, PROJECT section): removes every layer in the active comp whose name starts with `EH_`, with a confirmation alert showing the count removed.
+- **New "Templates" tab** with 4 one-click sequence combos:
+  - **Intro Punch** — Punch In-Out + Shake Medium + White Flash + Glow Boost.
+  - **Anime Impact** — Black Flash + Speed Lines + Shake Heavy + Smooth Zoom In.
+  - **Glitch Transition** — RGB Split + VHS Glitch + Shake Medium.
+  - **Cinematic Reveal** — Smooth Zoom In + Tint Cinematic + Vignette + Film Grain.
+- All new actions are available in the AI Chat assistant (local keyword matching + AI Bridge).
+
+---
+
 ## [0.4.0] — 2026-06-11
 
 ### Changed — UI overhaul

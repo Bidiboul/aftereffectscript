@@ -84,6 +84,35 @@ Type a request in plain language and the assistant applies the corresponding act
 |---|---|
 | **Auto Precomp Selected** | Pre-composes selected layers into a new composition named `EH_Precomp_01` (auto-increments if the name already exists). |
 | **Organize Project** | Creates five standard folders (`01_Comps`, `02_Footage`, `03_Audio`, `04_Precomps`, `05_Solids`) and moves every project item into the appropriate folder based on its type. |
+| **Clean EH_ Layers** | Removes every layer in the active comp whose name starts with `EH_` (all panel-generated layers), with a confirmation showing how many were removed. |
+
+### Color Grading (Tab "Overlays")
+
+| Button | Description |
+|---|---|
+| **Teal & Orange** | Classic cinematic grade — blue-green shadows, orange highlights, boosted contrast. |
+| **Moody Cinematic** | Dark, desaturated, high-contrast dramatic look. |
+| **Pastel Anime** | Soft, bright colors with increased saturation, anime-style. |
+| **High Contrast B&W** | Full desaturation with strong contrast boost. |
+
+Each preset adds an `EH_Grade_<name>` adjustment layer using native Brightness & Contrast 2, Hue/Saturation, and Tint effects.
+
+### TikTok Caption Style (Tab "Text")
+
+| Button | Description |
+|---|---|
+| **TikTok Caption Style** | Adds a black Stroke + Drop Shadow (Layer Styles) to the selected text layer(s), then plays the Bounce In animation. |
+
+### Sequence Templates (Tab "Templates")
+
+One-click combos that chain multiple existing actions:
+
+| Button | Description |
+|---|---|
+| **Intro Punch** | Punch In-Out + Shake Medium + White Flash + Glow Boost. |
+| **Anime Impact** | Black Flash + Speed Lines + Shake Heavy + Smooth Zoom In. |
+| **Glitch Transition** | RGB Split + VHS Glitch + Shake Medium. |
+| **Cinematic Reveal** | Smooth Zoom In + Tint Cinematic + Vignette + Film Grain. |
 
 ---
 

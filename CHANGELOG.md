@@ -6,6 +6,15 @@ Format: `[Version] — YYYY-MM-DD`
 
 ---
 
+## [0.5.1] — 2026-06-11
+
+### Added — Auto Music Markers
+
+- **Auto Music Markers** (Sounds tab, new "MARQUEURS" section): dialog to enter a BPM, marker interval (every 1/2/4/8 beats) and start time, then drops composition markers ("Beat") across the whole comp duration — useful for cutting on the beat. Option to clear existing markers first.
+- Available in the AI Chat assistant (`autoMusicMarkers`).
+
+---
+
 ## [0.5.0] — 2026-06-11
 
 ### Added — Color Grading, Templates & Project Tools

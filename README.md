@@ -47,6 +47,13 @@ See [INSTALLATION.md](INSTALLATION.md) for full instructions.
 | **Speed Lines (anime)** | Radial anime-style speed lines overlay — Fractal Noise + Polar Coordinates, Screen blend, animated. 100 % native effects. |
 | **Freeze Frame** | Splits the selected layer at the playhead and holds the frame with time remapping. |
 
+### Sounds (Tab "Sounds")
+
+| Button | Description |
+|---|---|
+| **Auto Music Markers** | Opens a dialog to enter a BPM, marker interval (every 1/2/4/8 beats) and start time, then drops composition markers ("Beat") across the whole comp duration — great for cutting on the beat. Optionally clears existing markers first. |
+| **Sound folder browser** | Choose a local folder; lists all `.wav/.mp3/.aif/.aiff/.m4a/.ogg/.flac` files. Click or double-click to import and place at the current time. |
+
 ### AI Chat (Tab "AI Chat")
 
 Type a request in plain language and the assistant applies the corresponding action directly to your composition — no menus to dig through.

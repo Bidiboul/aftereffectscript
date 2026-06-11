@@ -1,9 +1,13 @@
 /**
- * Edit Helper Panel v0.5
+ * Edit Helper Panel v0.5.1
  * ScriptUI Panel for Adobe After Effects (2024+)
  *
  * Place in: [AE Install]/Scripts/ScriptUI Panels/
  * Open via: Window > Edit Helper Panel
+ *
+ * New in v0.5.1:
+ *  - Auto Music Markers: places composition markers on the beat based on
+ *    a BPM value entered in a small dialog (Sounds tab).
  *
  * New in v0.5:
  *  - Color Grading presets (Teal & Orange, Moody Cinematic, Pastel Anime,
@@ -26,7 +30,7 @@
 (function EditHelperPanel(thisObj) {
 
     var SCRIPT_NAME    = "Edit Helper Panel";
-    var SCRIPT_VERSION = "0.5";
+    var SCRIPT_VERSION = "0.5.1";
     var SETTINGS_KEY   = "EditHelperPanel";
 
     // ============================================================
@@ -911,6 +915,77 @@
     }
 
     // ============================================================
+    //  FEATURES — AUTO MUSIC MARKERS
+    // ============================================================
+
+    /**
+     * Opens a small dialog asking for a BPM, a marker interval (every N
+     * beats) and a start time, then drops composition markers at every
+     * beat across the comp's duration — handy for cutting on the beat.
+     */
+    function autoMusicMarkers() {
+        var comp = requireActiveComp();
+        if (!comp) return;
+
+        var dlg = new Window("dialog", SCRIPT_NAME+" — Marqueurs musicaux");
+        dlg.orientation="column"; dlg.alignChildren=["fill","top"]; dlg.spacing=10; dlg.margins=14;
+
+        dlg.add("statictext",undefined,
+            "Place un marqueur de composition à chaque temps (beat) "+
+            "calculé à partir du BPM, sur toute la durée de la comp.",
+            {multiline:true});
+
+        var gBpm = dlg.add("group");
+        gBpm.add("statictext",undefined,"BPM :");
+        var etBpm = gBpm.add("edittext",undefined,"120"); etBpm.characters=6;
+
+        var gEvery = dlg.add("group");
+        gEvery.add("statictext",undefined,"Marqueur tous les (beats) :");
+        var ddEvery = gEvery.add("dropdownlist",undefined,["1","2","4","8"]);
+        ddEvery.selection = 0;
+
+        var gStart = dlg.add("group");
+        gStart.add("statictext",undefined,"Départ (secondes) :");
+        var etStart = gStart.add("edittext",undefined,String(comp.time.toFixed(2))); etStart.characters=6;
+
+        var gClear = dlg.add("group");
+        var cbClear = gClear.add("checkbox",undefined,"Effacer les marqueurs existants avant");
+        cbClear.value = false;
+
+        var gBtns = dlg.add("group"); gBtns.alignment=["right","top"];
+        gBtns.add("button",undefined,"Annuler").onClick=function(){dlg.close();};
+        var btnOk = gBtns.add("button",undefined,"Générer");
+
+        btnOk.onClick = function() {
+            var bpm = parseFloat(etBpm.text);
+            var start = parseFloat(etStart.text);
+            var every = parseInt(ddEvery.selection.text,10);
+            if (isNaN(bpm) || bpm <= 0) { alert(SCRIPT_NAME+"\n\nBPM invalide."); return; }
+            if (isNaN(start) || start < 0) start = 0;
+
+            withUndo("Auto Music Markers", function() {
+                var mp = comp.markerProperty;
+
+                if (cbClear.checked) {
+                    for (var i = mp.numKeys; i >= 1; i--) mp.removeKey(i);
+                }
+
+                var step = (60 / bpm) * every;
+                var count = 0;
+                var maxMarkers = 2000;
+                for (var t = start; t <= comp.duration + 0.0001 && count < maxMarkers; t += step) {
+                    mp.setValueAtTime(t, new MarkerValue("Beat"));
+                    count++;
+                }
+                alert(SCRIPT_NAME+"\n\n"+count+" marqueur(s) ajouté(s) ("+bpm+" BPM, tous les "+every+" beat(s)).");
+            });
+            dlg.close();
+        };
+
+        dlg.center(); dlg.show();
+    }
+
+    // ============================================================
     //  FEATURES — SEQUENCE TEMPLATES (one-click combos)
     // ============================================================
 
@@ -1010,7 +1085,8 @@
         templateIntroPunch: { run: templateIntroPunch, keywords: ["intro punch","template intro"] },
         templateAnimeImpact: { run: templateAnimeImpact, keywords: ["anime impact","template anime"] },
         templateGlitchTransition: { run: templateGlitchTransition, keywords: ["glitch transition","template glitch"] },
-        templateCinematicReveal: { run: templateCinematicReveal, keywords: ["cinematic reveal","template cinematic"] }
+        templateCinematicReveal: { run: templateCinematicReveal, keywords: ["cinematic reveal","template cinematic"] },
+        autoMusicMarkers: { run: autoMusicMarkers, keywords: ["marqueur musique","music marker","marqueurs musicaux","beat marker","marqueur bpm"] }
     };
 
     /**
@@ -1125,7 +1201,8 @@
         trash:function(g,x,y,s,p){g.newPath();g.rectPath(x+s*.2,y+s*.25,s*.6,s*.7);g.strokePath(p);g.newPath();g.moveTo(x,y+s*.2);g.lineTo(x+s,y+s*.2);g.strokePath(p);g.newPath();g.moveTo(x+s*.35,y+s*.05);g.lineTo(x+s*.65,y+s*.05);g.lineTo(x+s*.65,y+s*.2);g.lineTo(x+s*.35,y+s*.2);g.closePath();g.strokePath(p);g.newPath();g.moveTo(x+s*.35,y+s*.4);g.lineTo(x+s*.35,y+s*.8);g.strokePath(p);g.newPath();g.moveTo(x+s*.65,y+s*.4);g.lineTo(x+s*.65,y+s*.8);g.strokePath(p);},
         combo:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s*.55,s*.55);g.strokePath(p);g.newPath();g.ellipsePath(x+s*.45,y+s*.45,s*.55,s*.55);g.strokePath(p);},
         gradeIcon:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s,s);g.strokePath(p);g.newPath();g.moveTo(x+s/2,y);g.lineTo(x+s/2,y+s);g.strokePath(p);g.newPath();g.moveTo(x,y+s/2);g.lineTo(x+s,y+s/2);g.strokePath(p);},
-        captionIcon:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.15,s,s*.55);g.strokePath(p);g.newPath();g.rectPath(x+s*.15,y+s*.85,s*.7,s*.12);g.strokePath(p);}
+        captionIcon:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.15,s,s*.55);g.strokePath(p);g.newPath();g.rectPath(x+s*.15,y+s*.85,s*.7,s*.12);g.strokePath(p);},
+        marker:function(g,x,y,s,p){g.newPath();g.moveTo(x+s*.5,y);g.lineTo(x+s,y+s*.35);g.lineTo(x+s*.5,y+s*.7);g.lineTo(x,y+s*.35);g.closePath();g.strokePath(p);g.newPath();g.moveTo(x+s*.5,y+s*.7);g.lineTo(x+s*.5,y+s);g.strokePath(p);}
     };
 
     // ============================================================
@@ -1306,6 +1383,11 @@
     function buildSoundsTab(parent) {
         var grp = parent.add("group");
         grp.orientation="column"; grp.alignChildren=["fill","top"]; grp.spacing=6; grp.margins=8;
+
+        sectionHeader(grp, "MARQUEURS");
+        featureButton(grp,"Auto Music Markers","marker",
+            "Place des marqueurs de composition à chaque temps (beat) selon le BPM, sur toute la durée de la comp.",
+            autoMusicMarkers);
 
         sectionHeader(grp, "DOSSIER DE SONS");
 

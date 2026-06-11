@@ -6,6 +6,23 @@ Format: `[Version] — YYYY-MM-DD`
 
 ---
 
+## [0.7.0] — 2026-06-11
+
+### Added — Transition Builder
+
+- New **"Transitions"** tab with one-click cut transitions, applied at the playhead on the selected layer(s) (unless noted):
+  - **Whip Pan Left / Right** — fast Position move with Motion Blur (8 frames).
+  - **Slide From Left / Right / Top / Bottom** — layer slides off-comp with Motion Blur (12 frames).
+  - **Spin Blur Transition** — 2 full rotations + scale-up with Motion Blur (8 frames).
+  - **Zoom Blur Transition** — rapid 4x scale with Motion Blur (8 frames).
+  - **RGB Glitch Transition** — RGB Split + animated Wave Warp on an adjustment layer (8 frames).
+  - **Flash Cut** — very short (2-frame) white flash for a hard cut, applies to the whole comp.
+  - **Camera Shake Transition** — short, intense non-destructive shake (10 frames), applies to the whole comp.
+  - **Warp / Distort Transition** — animated Turbulent Displace on an adjustment layer (8 frames), applies to the whole comp.
+- All transitions are available in the AI Chat assistant.
+
+---
+
 ## [0.6.0] — 2026-06-11
 
 ### Added — Beat Sync, Render Queue & Project Cleaner Pro

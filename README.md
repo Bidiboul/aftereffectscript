@@ -68,6 +68,21 @@ Apply effects automatically on every composition marker — pairs with **Auto Mu
 
 > If more than 30 markers are detected, a confirmation dialog warns about the number of layers that will be created.
 
+### Transitions (Tab "Transitions")
+
+One-click cut transitions, applied at the playhead on the selected layer(s) unless noted.
+
+| Button | Description |
+|---|---|
+| **Whip Pan Left / Right** | Fast Position move with Motion Blur (8 frames). |
+| **Slide From Left / Right / Top / Bottom** | Layer slides off-comp with Motion Blur (12 frames). |
+| **Spin Blur Transition** | 2 full rotations + scale-up with Motion Blur (8 frames). |
+| **Zoom Blur Transition** | Rapid 4x scale with Motion Blur (8 frames). |
+| **RGB Glitch Transition** | RGB Split + animated Wave Warp on an adjustment layer (8 frames). |
+| **Flash Cut** | Very short (2-frame) white flash for a hard cut — applies to the whole comp. |
+| **Camera Shake Transition** | Short, intense non-destructive shake (10 frames) — applies to the whole comp. |
+| **Warp / Distort Transition** | Animated Turbulent Displace on an adjustment layer (8 frames) — applies to the whole comp. |
+
 ### AI Chat (Tab "AI Chat")
 
 Type a request in plain language and the assistant applies the corresponding action directly to your composition — no menus to dig through.

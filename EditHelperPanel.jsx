@@ -1,9 +1,15 @@
 /**
- * Edit Helper Panel v0.6
+ * Edit Helper Panel v0.7
  * ScriptUI Panel for Adobe After Effects (2024+)
  *
  * Place in: [AE Install]/Scripts/ScriptUI Panels/
  * Open via: Window > Edit Helper Panel
+ *
+ * New in v0.7:
+ *  - New "Transitions" tab — Transition Builder: Whip Pan Left/Right,
+ *    Slide From Left/Right/Top/Bottom (with motion blur), Spin Blur,
+ *    Zoom Blur, RGB Glitch Transition, Flash Cut, Camera Shake
+ *    Transition, Warp/Distort Transition (Turbulent Displace).
  *
  * New in v0.6:
  *  - Beat Sync tools (Sounds tab): apply Flash, Shake, Zoom Punch, RGB Split
@@ -38,7 +44,7 @@
 (function EditHelperPanel(thisObj) {
 
     var SCRIPT_NAME    = "Edit Helper Panel";
-    var SCRIPT_VERSION = "0.6";
+    var SCRIPT_VERSION = "0.7";
     var SETTINGS_KEY   = "EditHelperPanel";
 
     // ============================================================
@@ -1150,6 +1156,153 @@
     }
 
     // ============================================================
+    //  FEATURES — TRANSITION BUILDER
+    // ============================================================
+
+    /** Standard short duration (in seconds) for transition effects. */
+    function transitionDuration(comp) { return framesToSeconds(8, comp); }
+
+    function whipPan(direction) {
+        withUndo("Whip Pan "+direction, function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Whip Pan")) return;
+            var dur = transitionDuration(comp);
+            var t1 = comp.time, t2 = Math.min(t1+dur, comp.duration);
+            var dx = comp.width * (direction==="left" ? -1.5 : 1.5);
+            comp.motionBlur = true;
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++) {
+                sel[i].motionBlur = true;
+                var pos = sel[i].property("Transform").property("Position");
+                var b = pos.valueAtTime(t1, false);
+                var b2 = b.slice(); b2[0] = b[0] + dx;
+                pos.setValueAtTime(t1, b);
+                pos.setValueAtTime(t2, b2);
+            }
+        });
+    }
+
+    function spinBlurTransition() {
+        withUndo("Spin Blur Transition", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Spin Blur Transition")) return;
+            var dur = transitionDuration(comp);
+            var t1 = comp.time, t2 = Math.min(t1+dur, comp.duration);
+            comp.motionBlur = true;
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++) {
+                sel[i].motionBlur = true;
+                var rot = sel[i].property("Transform").property("Rotation");
+                var br = rot.valueAtTime(t1, false);
+                rot.setValueAtTime(t1, br);
+                rot.setValueAtTime(t2, br + 720);
+                var scale = sel[i].property("Transform").property("Scale");
+                var bs = scale.valueAtTime(t1, false);
+                function sc(f) { var v=[]; for(var j=0;j<bs.length;j++) v.push(bs[j]*f); return v; }
+                scale.setValueAtTime(t1, bs);
+                scale.setValueAtTime(t2, sc(1.4));
+            }
+        });
+    }
+
+    function zoomBlurTransition() {
+        withUndo("Zoom Blur Transition", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Zoom Blur Transition")) return;
+            var dur = transitionDuration(comp);
+            var t1 = comp.time, t2 = Math.min(t1+dur, comp.duration);
+            comp.motionBlur = true;
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++) {
+                sel[i].motionBlur = true;
+                var scale = sel[i].property("Transform").property("Scale");
+                var b = scale.valueAtTime(t1, false);
+                function sc(f) { var v=[]; for(var j=0;j<b.length;j++) v.push(b[j]*f); return v; }
+                scale.setValueAtTime(t1, b);
+                scale.setValueAtTime(t2, sc(4));
+            }
+        });
+    }
+
+    function rgbGlitchTransition() {
+        withUndo("RGB Glitch Transition", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "RGB Glitch Transition")) return;
+            var s = comp.time, dur = transitionDuration(comp), e = Math.min(s+dur, comp.duration);
+            rgbSplit();
+            var adj = comp.layers.addSolid([0.5,0.5,0.5],"EH_GlitchTransition",
+                comp.width,comp.height,comp.pixelAspect,e-s);
+            adj.adjustmentLayer = true; adj.inPoint = s; adj.moveToBeginning();
+            try {
+                var warp = adj.Effects.addProperty("ADBE Wave Warp");
+                warp.property("ADBE Wave Warp-0001").setValue(3); // Sine
+                var height = warp.property("ADBE Wave Warp-0002");
+                height.setValueAtTime(s, 0);
+                height.setValueAtTime(s+dur/2, 35);
+                height.setValueAtTime(e, 0);
+                warp.property("ADBE Wave Warp-0003").setValue(comp.width);
+                warp.property("ADBE Wave Warp-0004").setValue(90);
+            } catch(ex) {}
+        });
+    }
+
+    function flashCutTransition() {
+        withUndo("Flash Cut Transition", function() {
+            var comp = requireActiveComp();
+            var s = comp.time, e = Math.min(s + framesToSeconds(2,comp), comp.duration);
+            if (e <= s) return;
+            var fl = comp.layers.addSolid([1,1,1],"EH_FlashCut",
+                comp.width,comp.height,comp.pixelAspect,e-s);
+            fl.inPoint = s; fl.moveToBeginning();
+            var op = fl.property("Transform").property("Opacity");
+            op.setValueAtTime(s, 100); op.setValueAtTime(e, 0);
+        });
+    }
+
+    function slideMotionBlurTransition(direction) {
+        withUndo("Slide Transition "+direction, function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Slide + Motion Blur")) return;
+            var dur = transitionDuration(comp) * 1.5;
+            var t1 = comp.time, t2 = Math.min(t1+dur, comp.duration);
+            var dx=0, dy=0;
+            if (direction==="left") dx=-comp.width;
+            else if (direction==="right") dx=comp.width;
+            else if (direction==="up") dy=-comp.height;
+            else dy=comp.height;
+            comp.motionBlur = true;
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++) {
+                sel[i].motionBlur = true;
+                var pos = sel[i].property("Transform").property("Position");
+                var b = pos.valueAtTime(t1, false);
+                var b2 = b.slice(); b2[0]+=dx; b2[1]+=dy;
+                pos.setValueAtTime(t1, b);
+                pos.setValueAtTime(t2, b2);
+            }
+        });
+    }
+
+    function cameraShakeTransition() { quickShake(25, 60, "Transition"); }
+
+    function warpDistortTransition() {
+        withUndo("Warp Distort Transition", function() {
+            var comp = requireActiveComp();
+            var s = comp.time, dur = transitionDuration(comp), e = Math.min(s+dur, comp.duration);
+            var adj = comp.layers.addSolid([0.5,0.5,0.5],"EH_WarpTransition",
+                comp.width,comp.height,comp.pixelAspect,e-s);
+            adj.adjustmentLayer = true; adj.inPoint = s; adj.moveToBeginning();
+            try {
+                var td = adj.Effects.addProperty("ADBE Turbulent Displace");
+                var amt = td.property("ADBE Turbulent Displace-0002"); // Amount
+                amt.setValueAtTime(s, 0);
+                amt.setValueAtTime(s+dur/2, 80);
+                amt.setValueAtTime(e, 0);
+            } catch(ex) {}
+        });
+    }
+
+    // ============================================================
     //  FEATURES — SEQUENCE TEMPLATES (one-click combos)
     // ============================================================
 
@@ -1258,7 +1411,19 @@
         beatAnimePack   : { run: beatAnimePack, keywords: ["anime beat pack","beat pack anime","pack de beats"] },
         addToRenderQueue: { run: addToRenderQueue, keywords: ["render queue","ajoute au rendu","add to render queue"] },
         findMissingFootage: { run: findMissingFootage, keywords: ["missing footage","media manquant","médias manquants"] },
-        removeUnusedFootage: { run: removeUnusedFootage, keywords: ["unused footage","media inutilise","médias inutilisés"] }
+        removeUnusedFootage: { run: removeUnusedFootage, keywords: ["unused footage","media inutilise","médias inutilisés"] },
+        whipPanLeft     : { run: function(){whipPan("left");}, keywords: ["whip pan left","whip pan gauche"] },
+        whipPanRight    : { run: function(){whipPan("right");}, keywords: ["whip pan right","whip pan droite"] },
+        spinBlurTransition: { run: spinBlurTransition, keywords: ["spin blur","transition spin"] },
+        zoomBlurTransition: { run: zoomBlurTransition, keywords: ["zoom blur","transition zoom blur"] },
+        rgbGlitchTransition: { run: rgbGlitchTransition, keywords: ["rgb glitch transition","glitch rgb transition"] },
+        flashCutTransition: { run: flashCutTransition, keywords: ["flash cut","transition flash"] },
+        slideLeftTransition: { run: function(){slideMotionBlurTransition("left");}, keywords: ["slide transition left","slide gauche transition"] },
+        slideRightTransition: { run: function(){slideMotionBlurTransition("right");}, keywords: ["slide transition right","slide droite transition"] },
+        slideUpTransition: { run: function(){slideMotionBlurTransition("up");}, keywords: ["slide transition up","slide haut transition"] },
+        slideDownTransition: { run: function(){slideMotionBlurTransition("down");}, keywords: ["slide transition down","slide bas transition"] },
+        cameraShakeTransition: { run: cameraShakeTransition, keywords: ["camera shake transition","transition camera shake"] },
+        warpDistortTransition: { run: warpDistortTransition, keywords: ["warp transition","distort transition","transition warp"] }
     };
 
     /**
@@ -1377,7 +1542,10 @@
         marker:function(g,x,y,s,p){g.newPath();g.moveTo(x+s*.5,y);g.lineTo(x+s,y+s*.35);g.lineTo(x+s*.5,y+s*.7);g.lineTo(x,y+s*.35);g.closePath();g.strokePath(p);g.newPath();g.moveTo(x+s*.5,y+s*.7);g.lineTo(x+s*.5,y+s);g.strokePath(p);},
         beat:function(g,x,y,s,p){var bars=[.3,.7,.45,.9,.6];for(var i=0;i<bars.length;i++){g.newPath();g.moveTo(x+s*i/(bars.length-1),y+s);g.lineTo(x+s*i/(bars.length-1),y+s*(1-bars[i]));g.strokePath(p);}},
         renderIcon:function(g,x,y,s,p){g.newPath();g.rectPath(x,y,s,s*.75);g.strokePath(p);g.newPath();g.moveTo(x+s*.35,y+s*.85);g.lineTo(x+s*.5,y+s);g.lineTo(x+s*.65,y+s*.85);g.strokePath(p);g.newPath();g.moveTo(x+s*.5,y+s*.15);g.lineTo(x+s*.5,y+s*.95);g.strokePath(p);},
-        searchIcon:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s*.65,s*.65);g.strokePath(p);g.newPath();g.moveTo(x+s*.55,y+s*.55);g.lineTo(x+s,y+s);g.strokePath(p);}
+        searchIcon:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s*.65,s*.65);g.strokePath(p);g.newPath();g.moveTo(x+s*.55,y+s*.55);g.lineTo(x+s,y+s);g.strokePath(p);},
+        whip:function(g,x,y,s,p){g.newPath();g.moveTo(x,y+s*.5);g.lineTo(x+s*.7,y+s*.5);g.strokePath(p);g.newPath();g.moveTo(x+s*.5,y+s*.25);g.lineTo(x+s*.8,y+s*.5);g.lineTo(x+s*.5,y+s*.75);g.strokePath(p);for(var i=0;i<3;i++){g.newPath();g.moveTo(x+s*.05,y+s*(.3+i*.05));g.lineTo(x+s*.3,y+s*(.3+i*.05));g.strokePath(p);}},
+        spin:function(g,x,y,s,p){g.newPath();g.ellipsePath(x+s*.15,y+s*.15,s*.7,s*.7);g.strokePath(p);g.newPath();g.moveTo(x+s*.85,y+s*.5);g.lineTo(x+s,y+s*.35);g.lineTo(x+s*.95,y+s*.6);g.closePath();g.strokePath(p);},
+        warp:function(g,x,y,s,p){for(var i=0;i<4;i++){g.newPath();var yy=y+s*i/3;g.moveTo(x,yy);g.curveTo(x+s*.33,yy+s*.12,x+s*.66,yy-s*.12,x+s,yy);g.strokePath(p);}}
     };
 
     // ============================================================
@@ -1915,7 +2083,58 @@
             "Combo : Smooth Zoom In + Tint Cinematic + Vignette + Film Grain.",
             templateCinematicReveal);
 
-        // ---- TAB 6: AI CHAT ----
+        // ---- TAB 6: TRANSITIONS ----
+        var tabTransitions = tabs.add("tab",undefined,"Transitions");
+        tabTransitions.orientation="column"; tabTransitions.alignChildren=["fill","top"]; tabTransitions.spacing=5; tabTransitions.margins=6;
+
+        var noteT = tabTransitions.add("statictext",undefined,
+            "⚠ Sélectionnez le(s) calque(s) à animer (sauf Flash Cut, Camera Shake et Warp/Distort, qui s'appliquent sur toute la comp).",
+            {multiline:true});
+        noteT.alignment=["fill","top"];
+
+        sectionHeader(tabTransitions,"WHIP & SLIDE");
+        featureButton(tabTransitions,"Whip Pan Left","whip",
+            "Mouvement rapide du calque vers la gauche avec motion blur (8 frames).",
+            function(){whipPan("left");});
+        featureButton(tabTransitions,"Whip Pan Right","whip",
+            "Mouvement rapide du calque vers la droite avec motion blur (8 frames).",
+            function(){whipPan("right");});
+        featureButton(tabTransitions,"Slide From Left","slide",
+            "Le calque sort par la gauche avec motion blur (12 frames).",
+            function(){slideMotionBlurTransition("left");});
+        featureButton(tabTransitions,"Slide From Right","slide",
+            "Le calque sort par la droite avec motion blur (12 frames).",
+            function(){slideMotionBlurTransition("right");});
+        featureButton(tabTransitions,"Slide From Top","slide",
+            "Le calque sort par le haut avec motion blur (12 frames).",
+            function(){slideMotionBlurTransition("up");});
+        featureButton(tabTransitions,"Slide From Bottom","slide",
+            "Le calque sort par le bas avec motion blur (12 frames).",
+            function(){slideMotionBlurTransition("down");});
+
+        sectionHeader(tabTransitions,"BLUR & SPIN");
+        featureButton(tabTransitions,"Spin Blur Transition","spin",
+            "Rotation rapide (2 tours) + scale-up avec motion blur (8 frames).",
+            spinBlurTransition);
+        featureButton(tabTransitions,"Zoom Blur Transition","zoomIn",
+            "Scale rapide x4 avec motion blur (8 frames) — effet de zoom flou.",
+            zoomBlurTransition);
+
+        sectionHeader(tabTransitions,"GLITCH & IMPACT");
+        featureButton(tabTransitions,"RGB Glitch Transition","rgb",
+            "RGB Split + Wave Warp animé sur calque d'ajustement (8 frames).",
+            rgbGlitchTransition);
+        featureButton(tabTransitions,"Flash Cut","flash",
+            "Flash blanc très court (2 frames) pour une coupe sèche.",
+            flashCutTransition);
+        featureButton(tabTransitions,"Camera Shake Transition","shake",
+            "Secousse caméra intense et brève (calque d'ajustement, 10 frames).",
+            cameraShakeTransition);
+        featureButton(tabTransitions,"Warp / Distort Transition","warp",
+            "Distorsion Turbulent Displace animée (montée puis retour, 8 frames).",
+            warpDistortTransition);
+
+        // ---- TAB 7: AI CHAT ----
         var tabChat = tabs.add("tab",undefined,"AI Chat");
         buildChatTab(tabChat);
 

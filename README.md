@@ -83,6 +83,19 @@ One-click cut transitions, applied at the playhead on the selected layer(s) unle
 | **Camera Shake Transition** | Short, intense non-destructive shake (10 frames) — applies to the whole comp. |
 | **Warp / Distort Transition** | Animated Turbulent Displace on an adjustment layer (8 frames) — applies to the whole comp. |
 
+### Speed Ramp Helper (Tab "Transitions")
+
+Time Remapping based tools for speed effects on the selected layer(s).
+
+| Button | Description |
+|---|---|
+| **Slow → Fast** | Layer starts at 25% speed and accelerates to normal across its duration. |
+| **Fast → Slow** | Layer starts at 75% speed and decelerates across its duration. |
+| **Impact Freeze → Speed** | Freezes the frame at the playhead for 6 frames, then ramps into a fast finish. |
+| **Beat Ramp** | Alternates fast/slow segments between every composition marker — use with Auto Music Markers. |
+| **Add Motion Blur** | Enables comp + layer Motion Blur. |
+| **Add Frame Blend** | Enables comp + layer Frame Blending (Pixel Motion). |
+
 ### AI Chat (Tab "AI Chat")
 
 Type a request in plain language and the assistant applies the corresponding action directly to your composition — no menus to dig through.

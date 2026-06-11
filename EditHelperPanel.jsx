@@ -1,9 +1,15 @@
 /**
- * Edit Helper Panel v0.7
+ * Edit Helper Panel v0.8
  * ScriptUI Panel for Adobe After Effects (2024+)
  *
  * Place in: [AE Install]/Scripts/ScriptUI Panels/
  * Open via: Window > Edit Helper Panel
+ *
+ * New in v0.8:
+ *  - Speed Ramp Helper (Transitions tab, "SPEED RAMP" section): Slow→Fast
+ *    and Fast→Slow time-remap ramps, Impact Freeze→Speed, Beat Ramp
+ *    (alternating fast/slow segments synced to comp markers), Add Motion
+ *    Blur, Add Frame Blend.
  *
  * New in v0.7:
  *  - New "Transitions" tab — Transition Builder: Whip Pan Left/Right,
@@ -44,7 +50,7 @@
 (function EditHelperPanel(thisObj) {
 
     var SCRIPT_NAME    = "Edit Helper Panel";
-    var SCRIPT_VERSION = "0.7";
+    var SCRIPT_VERSION = "0.8";
     var SETTINGS_KEY   = "EditHelperPanel";
 
     // ============================================================
@@ -1303,6 +1309,115 @@
     }
 
     // ============================================================
+    //  FEATURES — SPEED RAMP HELPER
+    // ============================================================
+
+    /** Enables Time Remapping on a layer and returns the property. */
+    function enableTimeRemap(layer) {
+        if (!layer.timeRemapEnabled) layer.timeRemapEnabled = true;
+        return layer.property("ADBE Time Remapping");
+    }
+    /** Source time (seconds) corresponding to a given comp time, before remapping. */
+    function sourceTimeAt(layer, t) {
+        return (t - layer.startTime) * (layer.stretch/100);
+    }
+
+    function speedRamp(mode) {
+        withUndo("Speed Ramp: "+(mode==="slowfast"?"Slow → Fast":"Fast → Slow"), function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Speed Ramp")) return;
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++) {
+                var layer = sel[i];
+                var inP = layer.inPoint, outP = layer.outPoint;
+                var trp = enableTimeRemap(layer);
+                var s0 = sourceTimeAt(layer, inP);
+                var sEnd = sourceTimeAt(layer, outP);
+                var span = sEnd - s0;
+                var mid = inP + (outP-inP) * 0.5;
+                var sMid = (mode==="slowfast") ? s0 + span*0.25 : s0 + span*0.75;
+                trp.setValueAtTime(inP, s0);
+                trp.setValueAtTime(mid, sMid);
+                trp.setValueAtTime(outP, sEnd);
+                easeLastKeys(trp, 3);
+            }
+        });
+    }
+
+    function impactFreezeToSpeed() {
+        withUndo("Impact Freeze → Speed", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Impact Freeze → Speed")) return;
+            var sel = getSelectedLayers(comp);
+            var freezeDur = framesToSeconds(6, comp);
+            for (var i = 0; i < sel.length; i++) {
+                var layer = sel[i];
+                var inP = layer.inPoint, outP = layer.outPoint;
+                var impact = comp.time;
+                if (impact <= inP || impact >= outP) impact = inP + (outP-inP)*0.4;
+                var freezeEnd = Math.min(impact + freezeDur, outP - 0.001);
+                var trp = enableTimeRemap(layer);
+                var s0 = sourceTimeAt(layer, inP);
+                var sImpact = sourceTimeAt(layer, impact);
+                var sEnd = sourceTimeAt(layer, outP);
+                trp.setValueAtTime(inP, s0);
+                trp.setValueAtTime(impact, sImpact);
+                trp.setValueAtTime(freezeEnd, sImpact);
+                trp.setValueAtTime(outP, sEnd);
+                easeLastKeys(trp, 4);
+            }
+        });
+    }
+
+    function beatSpeedRamp() {
+        withUndo("Beat Ramp", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Beat Ramp")) return;
+            var times = requireMarkers(comp);
+            if (!times) return;
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++) {
+                var layer = sel[i];
+                var trp = enableTimeRemap(layer);
+                var pts = [layer.inPoint];
+                for (var m = 0; m < times.length; m++)
+                    if (times[m] > layer.inPoint && times[m] < layer.outPoint) pts.push(times[m]);
+                pts.push(layer.outPoint);
+                var s = sourceTimeAt(layer, layer.inPoint);
+                trp.setValueAtTime(pts[0], s);
+                for (var p = 1; p < pts.length; p++) {
+                    var segDur = pts[p] - pts[p-1];
+                    var factor = (p % 2 === 1) ? 1.6 : 0.5; // alternate fast / slow segments
+                    s += segDur * factor;
+                    trp.setValueAtTime(pts[p], s);
+                }
+                easeLastKeys(trp, pts.length);
+            }
+        });
+    }
+
+    function addMotionBlur() {
+        withUndo("Add Motion Blur", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Add Motion Blur")) return;
+            comp.motionBlur = true;
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++) sel[i].motionBlur = true;
+        });
+    }
+
+    function addFrameBlend() {
+        withUndo("Add Frame Blend", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Add Frame Blend")) return;
+            comp.frameBlending = true;
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++)
+                sel[i].frameBlendingType = FrameBlendingType.PIXEL_MOTION;
+        });
+    }
+
+    // ============================================================
     //  FEATURES — SEQUENCE TEMPLATES (one-click combos)
     // ============================================================
 
@@ -1423,7 +1538,13 @@
         slideUpTransition: { run: function(){slideMotionBlurTransition("up");}, keywords: ["slide transition up","slide haut transition"] },
         slideDownTransition: { run: function(){slideMotionBlurTransition("down");}, keywords: ["slide transition down","slide bas transition"] },
         cameraShakeTransition: { run: cameraShakeTransition, keywords: ["camera shake transition","transition camera shake"] },
-        warpDistortTransition: { run: warpDistortTransition, keywords: ["warp transition","distort transition","transition warp"] }
+        warpDistortTransition: { run: warpDistortTransition, keywords: ["warp transition","distort transition","transition warp"] },
+        speedRampSlowFast: { run: function(){speedRamp("slowfast");}, keywords: ["slow to fast","ramp lent vers rapide","speed ramp slow fast"] },
+        speedRampFastSlow: { run: function(){speedRamp("fastslow");}, keywords: ["fast to slow","ramp rapide vers lent","speed ramp fast slow"] },
+        impactFreezeToSpeed: { run: impactFreezeToSpeed, keywords: ["impact freeze","freeze to speed","gel puis vitesse"] },
+        beatSpeedRamp   : { run: beatSpeedRamp, keywords: ["beat ramp","ramp sur les marqueurs","speed ramp beat"] },
+        addMotionBlur   : { run: addMotionBlur, keywords: ["motion blur","ajoute motion blur","flou de mouvement"] },
+        addFrameBlend   : { run: addFrameBlend, keywords: ["frame blend","frame blending","mélange d'images"] }
     };
 
     /**
@@ -1545,7 +1666,11 @@
         searchIcon:function(g,x,y,s,p){g.newPath();g.ellipsePath(x,y,s*.65,s*.65);g.strokePath(p);g.newPath();g.moveTo(x+s*.55,y+s*.55);g.lineTo(x+s,y+s);g.strokePath(p);},
         whip:function(g,x,y,s,p){g.newPath();g.moveTo(x,y+s*.5);g.lineTo(x+s*.7,y+s*.5);g.strokePath(p);g.newPath();g.moveTo(x+s*.5,y+s*.25);g.lineTo(x+s*.8,y+s*.5);g.lineTo(x+s*.5,y+s*.75);g.strokePath(p);for(var i=0;i<3;i++){g.newPath();g.moveTo(x+s*.05,y+s*(.3+i*.05));g.lineTo(x+s*.3,y+s*(.3+i*.05));g.strokePath(p);}},
         spin:function(g,x,y,s,p){g.newPath();g.ellipsePath(x+s*.15,y+s*.15,s*.7,s*.7);g.strokePath(p);g.newPath();g.moveTo(x+s*.85,y+s*.5);g.lineTo(x+s,y+s*.35);g.lineTo(x+s*.95,y+s*.6);g.closePath();g.strokePath(p);},
-        warp:function(g,x,y,s,p){for(var i=0;i<4;i++){g.newPath();var yy=y+s*i/3;g.moveTo(x,yy);g.curveTo(x+s*.33,yy+s*.12,x+s*.66,yy-s*.12,x+s,yy);g.strokePath(p);}}
+        warp:function(g,x,y,s,p){for(var i=0;i<4;i++){g.newPath();var yy=y+s*i/3;g.moveTo(x,yy);g.curveTo(x+s*.33,yy+s*.12,x+s*.66,yy-s*.12,x+s,yy);g.strokePath(p);}},
+        rampUp:function(g,x,y,s,p){g.newPath();g.moveTo(x,y+s);g.lineTo(x+s*.33,y+s*.7);g.lineTo(x+s*.66,y+s*.35);g.lineTo(x+s,y);g.strokePath(p);g.newPath();g.moveTo(x+s*.75,y);g.lineTo(x+s,y);g.lineTo(x+s,y+s*.25);g.strokePath(p);},
+        rampDown:function(g,x,y,s,p){g.newPath();g.moveTo(x,y);g.lineTo(x+s*.33,y+s*.35);g.lineTo(x+s*.66,y+s*.7);g.lineTo(x+s,y+s);g.strokePath(p);g.newPath();g.moveTo(x+s*.75,y+s);g.lineTo(x+s,y+s);g.lineTo(x+s,y+s*.75);g.strokePath(p);},
+        motionBlurIcon:function(g,x,y,s,p){for(var i=0;i<3;i++){g.newPath();g.moveTo(x,y+s*.3+i*s*.2);g.lineTo(x+s*(0.5+i*0.15),y+s*.3+i*s*.2);g.strokePath(p);}g.newPath();g.ellipsePath(x+s*.55,y+s*.1,s*.35,s*.35);g.strokePath(p);},
+        frameBlendIcon:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.3,s*.7,s*.7);g.strokePath(p);g.newPath();g.rectPath(x+s*.3,y,s*.7,s*.7);g.strokePath(p);}
     };
 
     // ============================================================
@@ -2133,6 +2258,26 @@
         featureButton(tabTransitions,"Warp / Distort Transition","warp",
             "Distorsion Turbulent Displace animée (montée puis retour, 8 frames).",
             warpDistortTransition);
+
+        sectionHeader(tabTransitions,"SPEED RAMP");
+        featureButton(tabTransitions,"Slow → Fast","rampUp",
+            "Active le Time Remapping : démarre lentement (25% de la vitesse) puis accélère sur le reste du calque.",
+            function(){speedRamp("slowfast");});
+        featureButton(tabTransitions,"Fast → Slow","rampDown",
+            "Active le Time Remapping : démarre rapide (75% de la vitesse) puis ralentit sur le reste du calque.",
+            function(){speedRamp("fastslow");});
+        featureButton(tabTransitions,"Impact Freeze → Speed","freeze",
+            "Fige l'image au temps courant (6 frames) puis enchaîne en accéléré jusqu'à la fin du calque.",
+            impactFreezeToSpeed);
+        featureButton(tabTransitions,"Beat Ramp","beat",
+            "Alterne segments rapides/lents (Time Remapping) entre chaque marqueur de la composition.",
+            beatSpeedRamp);
+        featureButton(tabTransitions,"Add Motion Blur","motionBlurIcon",
+            "Active le Motion Blur sur la composition et les calques sélectionnés.",
+            addMotionBlur);
+        featureButton(tabTransitions,"Add Frame Blend","frameBlendIcon",
+            "Active le Frame Blending (Pixel Motion) sur la composition et les calques sélectionnés.",
+            addFrameBlend);
 
         // ---- TAB 7: AI CHAT ----
         var tabChat = tabs.add("tab",undefined,"AI Chat");

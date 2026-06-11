@@ -6,6 +6,21 @@ Format: `[Version] — YYYY-MM-DD`
 
 ---
 
+## [0.8.0] — 2026-06-11
+
+### Added — Speed Ramp Helper
+
+- New **"SPEED RAMP"** section in the Transitions tab (Time Remapping based):
+  - **Slow → Fast** — layer starts at 25% speed and accelerates to normal across its duration.
+  - **Fast → Slow** — layer starts at 75% speed and decelerates across its duration.
+  - **Impact Freeze → Speed** — freezes the frame at the playhead for 6 frames, then ramps into a fast finish.
+  - **Beat Ramp** — alternates fast/slow segments between every comp marker (use with Auto Music Markers).
+  - **Add Motion Blur** — enables comp + layer Motion Blur.
+  - **Add Frame Blend** — enables comp + layer Frame Blending (Pixel Motion).
+- All new actions are available in the AI Chat assistant.
+
+---
+
 ## [0.7.0] — 2026-06-11
 
 ### Added — Transition Builder

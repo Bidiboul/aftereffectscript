@@ -1,9 +1,15 @@
 /**
- * Edit Helper Panel v0.8
+ * Edit Helper Panel v0.9
  * ScriptUI Panel for Adobe After Effects (2024+)
  *
  * Place in: [AE Install]/Scripts/ScriptUI Panels/
  * Open via: Window > Edit Helper Panel
+ *
+ * New in v0.9:
+ *  - New "Camera" tab — Camera Rig / 3D Movement: Create Camera Rig (null +
+ *    one-node camera), Camera Zoom Push In/Out, Cinematic Dolly In/Out,
+ *    Parallax Setup (depth-spread selected layers), Smooth Rotation,
+ *    3D Camera Shake, Fake Handheld Camera.
  *
  * New in v0.8:
  *  - Speed Ramp Helper (Transitions tab, "SPEED RAMP" section): Slow→Fast
@@ -50,7 +56,7 @@
 (function EditHelperPanel(thisObj) {
 
     var SCRIPT_NAME    = "Edit Helper Panel";
-    var SCRIPT_VERSION = "0.8";
+    var SCRIPT_VERSION = "0.9";
     var SETTINGS_KEY   = "EditHelperPanel";
 
     // ============================================================
@@ -1418,6 +1424,129 @@
     }
 
     // ============================================================
+    //  FEATURES — CAMERA RIG / 3D MOVEMENT
+    // ============================================================
+
+    function findCamera(comp) {
+        for (var i = 1; i <= comp.numLayers; i++)
+            if (comp.layer(i) instanceof CameraLayer) return comp.layer(i);
+        return null;
+    }
+    /** Creates a one-node camera parented to a 3D null ("EH_Camera_Null"). */
+    function createCameraRigInternal(comp) {
+        var nullLayer = comp.layers.addNull(comp.duration);
+        nullLayer.name = "EH_Camera_Null"; nullLayer.threeDLayer = true;
+        var cam = comp.layers.addCamera("EH_Camera", [comp.width/2, comp.height/2]);
+        cam.parent = nullLayer;
+        nullLayer.moveToBeginning();
+        return cam;
+    }
+    /** Returns the rig's null parent if it exists, otherwise the camera itself. */
+    function getCameraRig(cam) {
+        return (cam.parent && cam.parent.name === "EH_Camera_Null") ? cam.parent : cam;
+    }
+    function ensureCamera(comp) {
+        return findCamera(comp) || createCameraRigInternal(comp);
+    }
+
+    function createCameraRig() {
+        withUndo("Camera Rig", function() {
+            var comp = requireActiveComp();
+            if (findCamera(comp)) {
+                alert(SCRIPT_NAME+"\n\nUne caméra existe déjà dans cette composition.");
+                return;
+            }
+            createCameraRigInternal(comp);
+        });
+    }
+
+    function cameraZoomPush(direction) {
+        withUndo("Camera Zoom Push "+direction, function() {
+            var comp = requireActiveComp();
+            var cam = ensureCamera(comp);
+            var dur = transitionDuration(comp) * 2;
+            var t1 = comp.time, t2 = Math.min(t1+dur, comp.duration);
+            var zoom = cam.property("Camera Options").property("Zoom");
+            var z1 = zoom.valueAtTime(t1, false);
+            var z2 = direction==="in" ? z1*1.6 : z1*0.6;
+            zoom.setValueAtTime(t1, z1);
+            zoom.setValueAtTime(t2, z2);
+            easeLastKeys(zoom, 2);
+        });
+    }
+
+    /** Spreads the selected layers across Z depth (front→back) for a parallax effect. */
+    function parallaxSetup() {
+        withUndo("Parallax Setup", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Parallax Setup")) return;
+            ensureCamera(comp);
+            var sel = getSelectedLayers(comp);
+            for (var i = 0; i < sel.length; i++) {
+                var layer = sel[i];
+                layer.threeDLayer = true;
+                var pos = layer.property("Transform").property("Position");
+                var p = pos.value.slice();
+                while (p.length < 3) p.push(0);
+                p[2] = -i * 400;
+                pos.setValue(p);
+            }
+        });
+    }
+
+    /** Adds a continuous handheld-style wiggle expression to the camera rig. */
+    function shake3D() {
+        withUndo("3D Camera Shake", function() {
+            var comp = requireActiveComp();
+            var rig = getCameraRig(ensureCamera(comp));
+            rig.property("Transform").property("Position").expression = "wiggle(6, 25)";
+            try { rig.property("Transform").property("Orientation").expression = "wiggle(4, 8)"; } catch(e) {}
+        });
+    }
+
+    function smoothRotation() {
+        withUndo("Smooth Rotation", function() {
+            var comp = requireActiveComp();
+            if (!requireSelection(comp, "Smooth Rotation")) return;
+            var sel = getSelectedLayers(comp);
+            var t1 = comp.time, t2 = comp.duration;
+            for (var i = 0; i < sel.length; i++) {
+                var rot = sel[i].property("Transform").property(
+                    sel[i].threeDLayer ? "Z Rotation" : "Rotation");
+                var b = rot.valueAtTime(t1, false);
+                rot.setValueAtTime(t1, b);
+                rot.setValueAtTime(t2, b + 15);
+                easeLastKeys(rot, 2);
+            }
+        });
+    }
+
+    /** Adds a subtle, continuous wiggle expression to the camera rig for a handheld feel. */
+    function fakeHandheld() {
+        withUndo("Fake Handheld Camera", function() {
+            var comp = requireActiveComp();
+            var rig = getCameraRig(ensureCamera(comp));
+            rig.property("Transform").property("Position").expression = "wiggle(2, 8)";
+            try { rig.property("Transform").property("Orientation").expression = "wiggle(1.5, 2)"; } catch(e) {}
+        });
+    }
+
+    function cinematicDolly(direction) {
+        withUndo("Cinematic Dolly "+direction, function() {
+            var comp = requireActiveComp();
+            var rig = getCameraRig(ensureCamera(comp));
+            var pos = rig.property("Transform").property("Position");
+            var t1 = comp.time, t2 = comp.duration;
+            var p = pos.valueAtTime(t1, false).slice();
+            var p2 = p.slice();
+            p2[2] = p[2] + (direction==="in" ? -800 : 800);
+            pos.setValueAtTime(t1, p);
+            pos.setValueAtTime(t2, p2);
+            easeLastKeys(pos, 2);
+        });
+    }
+
+    // ============================================================
     //  FEATURES — SEQUENCE TEMPLATES (one-click combos)
     // ============================================================
 
@@ -1544,7 +1673,16 @@
         impactFreezeToSpeed: { run: impactFreezeToSpeed, keywords: ["impact freeze","freeze to speed","gel puis vitesse"] },
         beatSpeedRamp   : { run: beatSpeedRamp, keywords: ["beat ramp","ramp sur les marqueurs","speed ramp beat"] },
         addMotionBlur   : { run: addMotionBlur, keywords: ["motion blur","ajoute motion blur","flou de mouvement"] },
-        addFrameBlend   : { run: addFrameBlend, keywords: ["frame blend","frame blending","mélange d'images"] }
+        addFrameBlend   : { run: addFrameBlend, keywords: ["frame blend","frame blending","mélange d'images"] },
+        createCameraRig : { run: createCameraRig, keywords: ["camera rig","null camera","rig caméra"] },
+        cameraZoomPushIn: { run: function(){cameraZoomPush("in");}, keywords: ["camera zoom push in","push in caméra"] },
+        cameraZoomPushOut: { run: function(){cameraZoomPush("out");}, keywords: ["camera zoom push out","push out caméra"] },
+        parallaxSetup   : { run: parallaxSetup, keywords: ["parallax","effet de profondeur"] },
+        shake3D         : { run: shake3D, keywords: ["3d shake","camera shake 3d","secousse caméra 3d"] },
+        smoothRotation  : { run: smoothRotation, keywords: ["smooth rotation","rotation douce","rotation lente"] },
+        fakeHandheld    : { run: fakeHandheld, keywords: ["handheld","camera epaule","fake handheld"] },
+        cinematicDollyIn: { run: function(){cinematicDolly("in");}, keywords: ["dolly in","travelling avant"] },
+        cinematicDollyOut: { run: function(){cinematicDolly("out");}, keywords: ["dolly out","travelling arriere","travelling arrière"] }
     };
 
     /**
@@ -1670,7 +1808,10 @@
         rampUp:function(g,x,y,s,p){g.newPath();g.moveTo(x,y+s);g.lineTo(x+s*.33,y+s*.7);g.lineTo(x+s*.66,y+s*.35);g.lineTo(x+s,y);g.strokePath(p);g.newPath();g.moveTo(x+s*.75,y);g.lineTo(x+s,y);g.lineTo(x+s,y+s*.25);g.strokePath(p);},
         rampDown:function(g,x,y,s,p){g.newPath();g.moveTo(x,y);g.lineTo(x+s*.33,y+s*.35);g.lineTo(x+s*.66,y+s*.7);g.lineTo(x+s,y+s);g.strokePath(p);g.newPath();g.moveTo(x+s*.75,y+s);g.lineTo(x+s,y+s);g.lineTo(x+s,y+s*.75);g.strokePath(p);},
         motionBlurIcon:function(g,x,y,s,p){for(var i=0;i<3;i++){g.newPath();g.moveTo(x,y+s*.3+i*s*.2);g.lineTo(x+s*(0.5+i*0.15),y+s*.3+i*s*.2);g.strokePath(p);}g.newPath();g.ellipsePath(x+s*.55,y+s*.1,s*.35,s*.35);g.strokePath(p);},
-        frameBlendIcon:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.3,s*.7,s*.7);g.strokePath(p);g.newPath();g.rectPath(x+s*.3,y,s*.7,s*.7);g.strokePath(p);}
+        frameBlendIcon:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.3,s*.7,s*.7);g.strokePath(p);g.newPath();g.rectPath(x+s*.3,y,s*.7,s*.7);g.strokePath(p);},
+        cameraIcon:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.25,s*.65,s*.5);g.strokePath(p);g.newPath();g.moveTo(x+s*.65,y+s*.4);g.lineTo(x+s,y+s*.2);g.lineTo(x+s,y+s*.8);g.lineTo(x+s*.65,y+s*.6);g.closePath();g.strokePath(p);},
+        parallaxIcon:function(g,x,y,s,p){for(var i=0;i<3;i++){g.newPath();g.rectPath(x+s*i*.15,y+s*i*.15,s*.6,s*.6);g.strokePath(p);}},
+        dollyIcon:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.6,s,s*.15);g.strokePath(p);g.newPath();g.ellipsePath(x+s*.15,y+s*.78,s*.12,s*.12);g.strokePath(p);g.newPath();g.ellipsePath(x+s*.6,y+s*.78,s*.12,s*.12);g.strokePath(p);g.newPath();g.moveTo(x+s*.2,y+s*.55);g.lineTo(x+s*.5,y);g.lineTo(x+s*.85,y+s*.55);g.closePath();g.strokePath(p);}
     };
 
     // ============================================================
@@ -2279,7 +2420,48 @@
             "Active le Frame Blending (Pixel Motion) sur la composition et les calques sélectionnés.",
             addFrameBlend);
 
-        // ---- TAB 7: AI CHAT ----
+        // ---- TAB 7: CAMERA ----
+        var tabCamera = tabs.add("tab",undefined,"Camera");
+        tabCamera.orientation="column"; tabCamera.alignChildren=["fill","top"]; tabCamera.spacing=5; tabCamera.margins=6;
+
+        var noteC = tabCamera.add("statictext",undefined,
+            "⚠ Ces outils créent/utilisent une caméra 3D (\"EH_Camera\") parentée à un null "+
+            "(\"EH_Camera_Null\"). Parallax Setup et Smooth Rotation s'appliquent à la sélection.",
+            {multiline:true});
+        noteC.alignment=["fill","top"];
+
+        sectionHeader(tabCamera,"CAMERA RIG");
+        featureButton(tabCamera,"Create Camera Rig","cameraIcon",
+            "Crée une caméra 3D parentée à un null (EH_Camera_Null) pour animer toute la scène d'un coup.",
+            createCameraRig);
+        featureButton(tabCamera,"Camera Zoom Push In","cameraIcon",
+            "Augmente le zoom de la caméra (resserre le cadre) sur 16 frames.",
+            function(){cameraZoomPush("in");});
+        featureButton(tabCamera,"Camera Zoom Push Out","cameraIcon",
+            "Diminue le zoom de la caméra (élargit le cadre) sur 16 frames.",
+            function(){cameraZoomPush("out");});
+        featureButton(tabCamera,"Cinematic Dolly In","dollyIcon",
+            "Rapproche la caméra (Position Z) progressivement sur toute la durée de la comp.",
+            function(){cinematicDolly("in");});
+        featureButton(tabCamera,"Cinematic Dolly Out","dollyIcon",
+            "Éloigne la caméra (Position Z) progressivement sur toute la durée de la comp.",
+            function(){cinematicDolly("out");});
+
+        sectionHeader(tabCamera,"DEPTH & MOTION");
+        featureButton(tabCamera,"Parallax Setup","parallaxIcon",
+            "Active la 3D sur les calques sélectionnés et les répartit en profondeur (effet parallax).",
+            parallaxSetup);
+        featureButton(tabCamera,"Smooth Rotation","spin",
+            "Anime une rotation lente (+15°) des calques sélectionnés sur toute la durée de la comp.",
+            smoothRotation);
+        featureButton(tabCamera,"3D Camera Shake","shake",
+            "Applique un wiggle 3D continu (position + orientation) sur le rig caméra.",
+            shake3D);
+        featureButton(tabCamera,"Fake Handheld Camera","shake",
+            "Applique un léger wiggle continu sur le rig caméra pour un effet caméra à l'épaule.",
+            fakeHandheld);
+
+        // ---- TAB 8: AI CHAT ----
         var tabChat = tabs.add("tab",undefined,"AI Chat");
         buildChatTab(tabChat);
 

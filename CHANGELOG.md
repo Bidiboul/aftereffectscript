@@ -6,6 +6,22 @@ Format: `[Version] — YYYY-MM-DD`
 
 ---
 
+## [0.9.0] — 2026-06-11
+
+### Added — Camera Rig / 3D Movement
+
+- New **"Camera"** tab:
+  - **Create Camera Rig** — adds a one-node camera ("EH_Camera") parented to a 3D null ("EH_Camera_Null") so the whole scene can be animated through one object.
+  - **Camera Zoom Push In / Out** — animates the camera Zoom over 16 frames (creates a rig automatically if none exists).
+  - **Cinematic Dolly In / Out** — animates the rig's Position Z across the whole comp duration.
+  - **Parallax Setup** — enables 3D on the selected layers and spreads them across Z depth.
+  - **Smooth Rotation** — animates a slow +15° rotation of the selected layers across the comp.
+  - **3D Camera Shake** — continuous 3D wiggle (position + orientation) on the camera rig.
+  - **Fake Handheld Camera** — subtle continuous wiggle on the camera rig for a handheld feel.
+- All new actions are available in the AI Chat assistant.
+
+---
+
 ## [0.8.0] — 2026-06-11
 
 ### Added — Speed Ramp Helper

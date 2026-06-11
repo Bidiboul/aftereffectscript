@@ -96,6 +96,20 @@ Time Remapping based tools for speed effects on the selected layer(s).
 | **Add Motion Blur** | Enables comp + layer Motion Blur. |
 | **Add Frame Blend** | Enables comp + layer Frame Blending (Pixel Motion). |
 
+### Camera Rig / 3D Movement (Tab "Camera")
+
+| Button | Description |
+|---|---|
+| **Create Camera Rig** | Adds a one-node camera (`EH_Camera`) parented to a 3D null (`EH_Camera_Null`) so the whole scene can be animated through one object. |
+| **Camera Zoom Push In / Out** | Animates the camera Zoom over 16 frames (creates a rig automatically if none exists). |
+| **Cinematic Dolly In / Out** | Animates the rig's Position Z across the whole comp duration. |
+| **Parallax Setup** | Enables 3D on the selected layers and spreads them across Z depth for a parallax effect. |
+| **Smooth Rotation** | Animates a slow +15° rotation of the selected layers across the comp. |
+| **3D Camera Shake** | Continuous 3D wiggle (position + orientation) on the camera rig. |
+| **Fake Handheld Camera** | Subtle continuous wiggle on the camera rig for a handheld feel. |
+
+> Shake/Handheld expressions are continuous — remove them manually (select the property and delete the expression) when no longer needed.
+
 ### AI Chat (Tab "AI Chat")
 
 Type a request in plain language and the assistant applies the corresponding action directly to your composition — no menus to dig through.

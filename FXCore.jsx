@@ -1847,15 +1847,28 @@
      * description line explaining what the action does.
      */
     function featureButton(parent, label, iconName, desc, onClick) {
+        // The whole card (button + description) lives inside one neon-outlined
+        // frame, matching the FXCore marketing look.
         var col = parent.add("group");
         col.orientation = "column";
         col.alignChildren = ["fill","top"];
-        col.spacing = 1;
+        col.spacing = 2;
+        col.margins = [10,7,10,8];
         col.alignment = ["fill","top"];
+        col.onDraw = function() {
+            var g = this.graphics, th = theme(), ac = accent();
+            var w = this.size[0], h = this.size[1];
+            g.newPath(); g.rectPath(0,0,w,h);
+            g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[th.panel[0],th.panel[1],th.panel[2],1]));
+            g.newPath(); g.rectPath(0,0,3,h);
+            g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[ac[0],ac[1],ac[2],1]));
+            g.newPath(); g.rectPath(0.5,0.5,w-1,h-1);
+            g.strokePath(g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],0.35],1));
+        };
 
         var btn = col.add("button", undefined, "");
         btn.alignment = ["fill","top"];
-        btn.preferredSize = [-1, 28];
+        btn.preferredSize = [-1, 24];
         btn.helpTip = desc;
         btn._label = label; btn._icon = iconName;
         btn._hover = false;
@@ -1866,18 +1879,14 @@
             var bg = this._hover ? th.btnHover : th.panel;
             g.newPath(); g.rectPath(0,0,w,h);
             g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[bg[0],bg[1],bg[2],1]));
-            g.newPath(); g.rectPath(0,0,3,h);
-            g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[ac[0],ac[1],ac[2],1]));
-            // Neon outline — glows brighter on hover, matching the FXCore marketing look.
-            g.newPath(); g.rectPath(0.5,0.5,w-1,h-1);
-            g.strokePath(g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],this._hover?0.8:0.3],1));
             var pen = g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],1],1.5);
-            var is=14, ix=10, iy=(h-is)/2;
+            var is=14, ix=4, iy=Math.round((h-is)/2);
             if(ICONS[this._icon]) ICONS[this._icon](g,ix,iy,is,pen);
-            var font = ScriptUI.newFont("Tahoma",ScriptUI.FontStyle.REGULAR,12);
+            var font = ScriptUI.newFont("Tahoma",ScriptUI.FontStyle.BOLD,12);
+            var ts = g.measureString(this._label, font);
             g.drawString(this._label,
                 g.newPen(g.PenType.SOLID_COLOR,[th.text[0],th.text[1],th.text[2],1],1),
-                32,(h-14)/2,font);
+                26, Math.max(0,Math.round((h-ts[1])/2)), font);
         };
         btn.addEventListener("mouseover",function(){this._hover=true; safeRedraw(this);});
         btn.addEventListener("mouseout", function(){this._hover=false; safeRedraw(this);});
@@ -1891,6 +1900,7 @@
         } catch(e) {}
 
         allButtons.push(btn);
+        allHeaders.push(col);   // so the card frame is redrawn on theme change
         allDescs.push(d);
         return col;
     }
@@ -1902,20 +1912,31 @@
      */
     function buildLogoHeader(parent) {
         var grp = parent.add("group");
-        grp.alignment = ["fill","top"]; grp.preferredSize = [-1,34]; grp.margins = 0;
+        grp.alignment = ["fill","top"];
+        grp.preferredSize = [-1,36]; grp.minimumSize = [0,36]; grp.maximumSize = [10000,36];
+        grp.margins = 0;
         grp.onDraw = function() {
             var g=this.graphics, ac=accent(), th=theme();
             var w=this.size[0], h=this.size[1];
             g.newPath(); g.rectPath(0,0,w,h);
             g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[th.panel[0],th.panel[1],th.panel[2],1]));
-            var cx=17, cy=h/2, r=12;
+            g.newPath(); g.rectPath(0.5,0.5,w-1,h-1);
+            g.strokePath(g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],0.4],1));
+            var cx=20, cy=h/2, r=11;
             g.newPath(); g.ellipsePath(cx-r,cy-r,r*2,r*2);
-            g.strokePath(g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],0.6],1.5));
+            g.strokePath(g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],0.7],1.5));
             var pen=g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],1],1.8);
-            if(ICONS.flash) ICONS.flash(g,cx-6,cy-8,12,pen);
-            var font=ScriptUI.newFont("Tahoma",ScriptUI.FontStyle.BOLD,17);
-            g.drawString("FX",g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],1],1),38,(h-17)/2,font);
-            g.drawString("CORE",g.newPen(g.PenType.SOLID_COLOR,[th.text[0],th.text[1],th.text[2],1],1),68,(h-17)/2,font);
+            if(ICONS.flash) ICONS.flash(g,cx-5,cy-7,11,pen);
+            var font=ScriptUI.newFont("Tahoma",ScriptUI.FontStyle.BOLD,14);
+            var sFx=g.measureString("FX",font), sCore=g.measureString("CORE",font);
+            var ty=Math.max(0,Math.round((h-sFx[1])/2));
+            g.drawString("FX",g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],1],1),40,ty,font);
+            g.drawString("CORE",g.newPen(g.PenType.SOLID_COLOR,[th.text[0],th.text[1],th.text[2],1],1),40+sFx[0]+1,ty,font);
+            var vFont=ScriptUI.newFont("Tahoma",ScriptUI.FontStyle.REGULAR,9);
+            var vTxt="v"+SCRIPT_VERSION;
+            var sV=g.measureString(vTxt,vFont);
+            g.drawString(vTxt,g.newPen(g.PenType.SOLID_COLOR,[th.subtext[0],th.subtext[1],th.subtext[2],1],1),
+                Math.max(0,w-sV[0]-10),Math.max(0,Math.round((h-sV[1])/2)),vFont);
         };
         allHeaders.push(grp);
         return grp;
@@ -1923,12 +1944,16 @@
 
     function sectionHeader(parent, title) {
         var grp = parent.add("group");
-        grp.alignment = ["fill","top"]; grp.preferredSize = [240,16]; grp._title = title;
+        grp.alignment = ["fill","top"]; grp.preferredSize = [240,20];
+        grp.minimumSize = [0,20]; grp.maximumSize = [10000,20]; grp._title = title;
         grp.onDraw = function() {
             var g=this.graphics, ac=accent(), th=theme();
+            var h=this.size[1], w=this.size[0];
             var font=ScriptUI.newFont("Tahoma",ScriptUI.FontStyle.BOLD,10);
-            g.drawString(this._title,g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],1],1),0,1,font);
-            g.newPath();g.moveTo(0,14);g.lineTo(this.size[0],14);
+            var ts=g.measureString(this._title,font);
+            g.drawString(this._title,g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],1],1),
+                0,Math.max(0,Math.round((h-2-ts[1])/2)),font);
+            g.newPath();g.moveTo(ts[0]+8,Math.round(h/2)-1);g.lineTo(w,Math.round(h/2)-1);
             g.strokePath(g.newPen(g.PenType.SOLID_COLOR,[th.subtext[0],th.subtext[1],th.subtext[2],.4],1));
         };
         allHeaders.push(grp);
@@ -2022,6 +2047,7 @@
             } catch(e) {}
         }
         if(panel.layout) panel.layout.layout(true);
+        try { updateScrollbars(); } catch(e){}
     }
 
     // ============================================================
@@ -2175,6 +2201,54 @@
     //  MAIN UI — TABBED PANEL
     // ============================================================
 
+    // Scrollable tab support: each tab holds a clipped viewport + a content
+    // column moved vertically by a scrollbar, so long tabs stay usable at any
+    // panel height.
+    var scrollTabs = [];
+
+    function makeScrollableTab(tabs, name) {
+        var tab = tabs.add("tab", undefined, name);
+        tab.orientation="row"; tab.alignChildren=["fill","fill"];
+        tab.spacing=2; tab.margins=2;
+
+        var viewport = tab.add("group");
+        viewport.orientation="column"; viewport.alignChildren=["fill","top"];
+        viewport.alignment=["fill","fill"];
+        viewport.preferredSize=[280,420];
+
+        var content = viewport.add("group");
+        content.orientation="column"; content.alignChildren=["fill","top"];
+        content.spacing=5; content.margins=[4,4,4,4];
+        content.alignment=["fill","top"];
+
+        var sb = tab.add("scrollbar");
+        sb.alignment=["right","fill"]; sb.preferredSize=[14,-1];
+        sb.minvalue=0; sb.maxvalue=0; sb.value=0;
+        sb.onChanging = sb.onChange = function() {
+            try { content.location = [content.location[0], -Math.round(this.value)]; } catch(e){}
+        };
+
+        scrollTabs.push({ viewport:viewport, content:content, sb:sb });
+        return content;
+    }
+
+    function updateScrollbars() {
+        for (var i=0;i<scrollTabs.length;i++) {
+            var st=scrollTabs[i];
+            try {
+                var vh = st.viewport.size ? st.viewport.size[1] : 0;
+                var ch = st.content.size ? st.content.size[1] : 0;
+                var max = Math.max(0, ch - vh);
+                st.sb.maxvalue = max;
+                st.sb.stepdelta = 28;
+                st.sb.jumpdelta = vh > 0 ? vh : 60;
+                if (st.sb.value > max) st.sb.value = max;
+                st.sb.enabled = max > 0;
+                st.content.location = [st.content.location[0], -Math.round(st.sb.value)];
+            } catch(e){}
+        }
+    }
+
     function buildUI(thisObj) {
         var panel = (thisObj instanceof Panel)
             ? thisObj
@@ -2188,10 +2262,10 @@
         // ---- Tabbed area ----
         var tabs = panel.add("tabbedpanel");
         tabs.alignment=["fill","fill"];
+        tabs.onChange = function(){ updateScrollbars(); };
 
         // ---- TAB 1: EDIT ----
-        var tabEdit = tabs.add("tab",undefined,"Edit");
-        tabEdit.orientation="column"; tabEdit.alignChildren=["fill","top"]; tabEdit.spacing=5; tabEdit.margins=6;
+        var tabEdit = makeScrollableTab(tabs,"Edit");
 
         sectionHeader(tabEdit, "LAYERS");
         featureButton(tabEdit,"Adjustment Layer","adjustment",
@@ -2267,8 +2341,7 @@
             addToRenderQueue);
 
         // ---- TAB 2: TEXT ----
-        var tabText = tabs.add("tab",undefined,"Text");
-        tabText.orientation="column"; tabText.alignChildren=["fill","top"]; tabText.spacing=5; tabText.margins=6;
+        var tabText = makeScrollableTab(tabs,"Text");
 
         var note = tabText.add("statictext",undefined,
             "⚠ Sélectionnez un calque de texte avant d'appliquer une animation.",
@@ -2312,12 +2385,11 @@
             captionStyle);
 
         // ---- TAB 3: SOUNDS ----
-        var tabSounds = tabs.add("tab",undefined,"Sounds");
+        var tabSounds = makeScrollableTab(tabs,"Sounds");
         buildSoundsTab(tabSounds);
 
         // ---- TAB 4: OVERLAYS ----
-        var tabOverlays = tabs.add("tab",undefined,"Overlays");
-        tabOverlays.orientation="column"; tabOverlays.alignChildren=["fill","top"]; tabOverlays.spacing=5; tabOverlays.margins=6;
+        var tabOverlays = makeScrollableTab(tabs,"Overlays");
 
         sectionHeader(tabOverlays,"TEXTURE");
         featureButton(tabOverlays,"Film Grain","grain",
@@ -2373,8 +2445,7 @@
             gradeHighContrastBW);
 
         // ---- TAB 5: TEMPLATES ----
-        var tabTemplates = tabs.add("tab",undefined,"Templates");
-        tabTemplates.orientation="column"; tabTemplates.alignChildren=["fill","top"]; tabTemplates.spacing=5; tabTemplates.margins=6;
+        var tabTemplates = makeScrollableTab(tabs,"Templates");
 
         sectionHeader(tabTemplates,"SEQUENCE TEMPLATES");
         featureButton(tabTemplates,"Intro Punch","combo",
@@ -2391,8 +2462,7 @@
             templateCinematicReveal);
 
         // ---- TAB 6: TRANSITIONS ----
-        var tabTransitions = tabs.add("tab",undefined,"Transitions");
-        tabTransitions.orientation="column"; tabTransitions.alignChildren=["fill","top"]; tabTransitions.spacing=5; tabTransitions.margins=6;
+        var tabTransitions = makeScrollableTab(tabs,"Transitions");
 
         var noteT = tabTransitions.add("statictext",undefined,
             "⚠ Sélectionnez le(s) calque(s) à animer (sauf Flash Cut, Camera Shake et Warp/Distort, qui s'appliquent sur toute la comp).",
@@ -2462,8 +2532,7 @@
             addFrameBlend);
 
         // ---- TAB 7: CAMERA ----
-        var tabCamera = tabs.add("tab",undefined,"Camera");
-        tabCamera.orientation="column"; tabCamera.alignChildren=["fill","top"]; tabCamera.spacing=5; tabCamera.margins=6;
+        var tabCamera = makeScrollableTab(tabs,"Camera");
 
         var noteC = tabCamera.add("statictext",undefined,
             "⚠ Ces outils créent/utilisent une caméra 3D (\"EH_Camera\") parentée à un null "+
@@ -2529,8 +2598,20 @@
 
         applyTheme(panel);
 
-        if(panel instanceof Window){ panel.center(); panel.show(); }
-        else { panel.layout.layout(true); }
+        // Keep the layout fluid: re-flow everything and refresh the
+        // scrollbars whenever the panel/window is resized.
+        panel.onResizing = panel.onResize = function() {
+            try { this.layout.resize(); } catch(e){}
+            updateScrollbars();
+        };
+
+        if(panel instanceof Window){
+            panel.layout.layout(true);
+            panel.layout.resize();
+            panel.center(); panel.show();
+        }
+        else { panel.layout.layout(true); panel.layout.resize(); }
+        updateScrollbars();
         return panel;
     }
 

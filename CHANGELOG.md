@@ -6,6 +6,24 @@ Format: `[Version] — YYYY-MM-DD`
 
 ---
 
+## [1.1.0] — 2026-06-12
+
+### Added — Auto-Update
+
+- The panel checks `version.txt` on the repo at launch (max once a day) and, if a newer version exists, offers to download `FXCore.jsx` and replace the installed script automatically (uses `curl`, built into Windows 10+ and macOS).
+- New **"Mises à jour"** section in Settings: toggle the launch check on/off and a **"Vérifier maintenant"** button for a manual check.
+- Sanity checks prevent a failed/invalid download from overwriting a working install; if the script folder is write-protected, the downloaded file path is shown for manual replacement.
+
+### Fixed — UI polish
+
+- Scrollable tabs: every long tab now has a working scrollbar, refreshed on resize and tab change.
+- Feature buttons are full "cards": the neon frame wraps the button **and** its description; labels vertically centered.
+- Logo header no longer clips the FX/CORE wordmark; version shown on the right.
+- Section headers no longer clip their title; the rule starts after the text.
+- The layout re-flows cleanly when the panel is resized.
+
+---
+
 ## [1.0.0] — 2026-06-12
 
 ### Rebrand — FXCore

@@ -136,6 +136,10 @@ Type a request in plain language and the assistant applies the corresponding act
 
 > ExtendScript's `Socket` object only supports plain TCP (no TLS), so the bridge must be a small local process — e.g. a Node.js or Python script on `127.0.0.1` that calls the Claude/OpenAI API over HTTPS on your behalf and forwards a one-line JSON response back to the panel.
 
+### Auto-Update
+
+At launch (at most once a day) the panel fetches `version.txt` from this repository and, if a newer version is available, offers to download `FXCore.jsx` and replace the installed script automatically — just close/reopen the panel afterwards. Requires **Allow Scripts to Write Files and Access Network** and `curl` (built into Windows 10+ and macOS). You can disable the launch check or trigger a manual check from **Settings > Mises à jour**.
+
 ### Customization & License
 
 - **Settings & Theme** button at the bottom of the panel: Dark/Light theme, accent color (6 presets or any custom hex), zoom intensity and duration. All settings persist between sessions.

@@ -66,7 +66,7 @@
 (function FXCore(thisObj) {
 
     var SCRIPT_NAME    = "FXCore";
-    var SCRIPT_VERSION = "1.0";
+    var SCRIPT_VERSION = "1.1";
     var SETTINGS_KEY   = "FXCore";
 
     // ============================================================
@@ -80,7 +80,9 @@
         zoomFrames  : 12,
         licenseKey  : "",
         soundFolder : "",
-        aiBridgeHost: ""
+        aiBridgeHost: "",
+        autoUpdate  : "1",
+        lastUpdateCheck: "0"
     };
 
     function loadSetting(key) {
@@ -101,8 +103,118 @@
         zoomFrames  : parseInt(loadSetting("zoomFrames"), 10),
         licenseKey  : loadSetting("licenseKey"),
         soundFolder : loadSetting("soundFolder"),
-        aiBridgeHost: loadSetting("aiBridgeHost")
+        aiBridgeHost: loadSetting("aiBridgeHost"),
+        autoUpdate  : loadSetting("autoUpdate"),
+        lastUpdateCheck: loadSetting("lastUpdateCheck")
     };
+
+    // ============================================================
+    //  AUTO-UPDATE
+    //  On launch (max once a day) the panel fetches version.txt from the
+    //  repo; if a newer version exists it offers to download FXCore.jsx
+    //  and overwrite the installed script in place. Requires
+    //  "Allow Scripts to Write Files and Access Network" + curl
+    //  (built into Windows 10+ and macOS).
+    // ============================================================
+
+    var UPDATE_BASE_URL    = "https://raw.githubusercontent.com/Bidiboul/aftereffectscript/main/";
+    var UPDATE_VERSION_URL = UPDATE_BASE_URL + "version.txt";
+    var UPDATE_SCRIPT_URL  = UPDATE_BASE_URL + "FXCore.jsx";
+
+    function httpDownload(url, destFile) {
+        try {
+            if (destFile.exists) destFile.remove();
+            var cmd = 'curl -s -L -m 20 "' + url + '" -o "' + destFile.fsName + '"';
+            if ($.os.toString().indexOf("Windows") !== -1) cmd = 'cmd.exe /c ' + cmd;
+            system.callSystem(cmd);
+            return destFile.exists && destFile.length > 0;
+        } catch (e) { return false; }
+    }
+
+    function readTextFile(f) {
+        var s = "";
+        try { f.encoding = "UTF-8"; if (f.open("r")) { s = f.read(); f.close(); } } catch (e) {}
+        return s;
+    }
+
+    function compareVersions(a, b) {
+        var pa = String(a).split("."), pb = String(b).split(".");
+        var n = Math.max(pa.length, pb.length);
+        for (var i = 0; i < n; i++) {
+            var x = parseInt(pa[i] || "0", 10), y = parseInt(pb[i] || "0", 10);
+            if (x !== y) return x < y ? -1 : 1;
+        }
+        return 0;
+    }
+
+    /**
+     * Checks the remote version and, if newer, downloads + installs the new
+     * FXCore.jsx over the running script. `manual` = launched from the
+     * Settings dialog: always runs and reports the result even when up to
+     * date; automatic launch checks are silent and throttled to once a day.
+     */
+    function checkForUpdates(manual) {
+        try {
+            if (!manual) {
+                if (settings.autoUpdate !== "1") return;
+                var now = new Date().getTime();
+                var last = parseFloat(settings.lastUpdateCheck) || 0;
+                if (now - last < 24 * 3600 * 1000) return;
+                settings.lastUpdateCheck = String(now);
+                saveSetting("lastUpdateCheck", settings.lastUpdateCheck);
+            }
+
+            var tmpV = new File(Folder.temp.fsName + "/fxcore_version.txt");
+            if (!httpDownload(UPDATE_VERSION_URL, tmpV)) {
+                if (manual) alert(SCRIPT_NAME + "\n\nImpossible de contacter le serveur de mise à jour.\nVérifiez votre connexion (et que curl est disponible).");
+                return;
+            }
+            var remote = readTextFile(tmpV).replace(/[^\d.]/g, "");
+            try { tmpV.remove(); } catch (e0) {}
+            if (!/^\d+(\.\d+)*$/.test(remote)) {
+                if (manual) alert(SCRIPT_NAME + "\n\nRéponse de mise à jour invalide.");
+                return;
+            }
+            if (compareVersions(remote, SCRIPT_VERSION) <= 0) {
+                if (manual) alert(SCRIPT_NAME + "\n\nVous êtes à jour (v" + SCRIPT_VERSION + ").");
+                return;
+            }
+
+            if (!confirm(SCRIPT_NAME + " v" + remote + " est disponible (vous avez la v" + SCRIPT_VERSION + ").\n\nTélécharger et installer la mise à jour maintenant ?"))
+                return;
+
+            var tmpS = new File(Folder.temp.fsName + "/FXCore_update.jsx");
+            if (!httpDownload(UPDATE_SCRIPT_URL, tmpS)) {
+                alert(SCRIPT_NAME + "\n\nÉchec du téléchargement de la mise à jour.");
+                return;
+            }
+            var content = readTextFile(tmpS);
+            // Basic sanity check so a 404 page / truncated download never
+            // overwrites a working install.
+            if (content.length < 5000 || content.indexOf("FXCore") === -1 || content.indexOf("(this))") === -1) {
+                alert(SCRIPT_NAME + "\n\nLe fichier téléchargé semble invalide — mise à jour annulée.");
+                return;
+            }
+
+            var target = new File($.fileName);
+            var ok = false;
+            try {
+                target.encoding = "UTF-8";
+                if (target.open("w")) { target.write(content); target.close(); ok = true; }
+            } catch (e1) {}
+
+            if (ok) {
+                try { tmpS.remove(); } catch (e2) {}
+                alert(SCRIPT_NAME + " a été mis à jour en v" + remote + " !\n\nFermez puis rouvrez le panel (ou redémarrez After Effects) pour profiter de la nouvelle version.");
+            } else {
+                alert(SCRIPT_NAME + "\n\nImpossible d'écrire dans :\n" + target.fsName +
+                      "\n\n(droits insuffisants ?) La mise à jour a été téléchargée ici :\n" + tmpS.fsName +
+                      "\n\nRemplacez le fichier manuellement.");
+            }
+        } catch (e) {
+            if (manual) alert(SCRIPT_NAME + "\n\nErreur pendant la mise à jour : " + e.toString());
+        }
+    }
 
     // ============================================================
     //  THEME
@@ -2014,6 +2126,13 @@
             "Laissez vide pour utiliser l'assistant local (mots-clés).\nVoir README.md → section « AI Bridge ».",
             {multiline:true});
 
+        var pUpd = dlg.add("panel",undefined,"Mises à jour");
+        pUpd.orientation="column"; pUpd.alignChildren=["left","top"]; pUpd.margins=12;
+        var cbUpd = pUpd.add("checkbox",undefined,"Vérifier les mises à jour au lancement (1x/jour)");
+        cbUpd.value = (settings.autoUpdate === "1");
+        var btnUpd = pUpd.add("button",undefined,"Vérifier maintenant");
+        btnUpd.onClick = function(){ checkForUpdates(true); };
+
         var gBtns=dlg.add("group"); gBtns.alignment=["right","top"];
         gBtns.add("button",undefined,"Annuler").onClick=function(){dlg.close();};
         gBtns.add("button",undefined,"Enregistrer").onClick=function(){
@@ -2025,9 +2144,11 @@
             if(!isNaN(amt)&&amt>0&&amt<=200) settings.zoomAmount=amt;
             if(!isNaN(dur)&&dur>0&&dur<=120) settings.zoomFrames=dur;
             settings.aiBridgeHost = etBridge.text.replace(/\s/g,"");
+            settings.autoUpdate = cbUpd.value ? "1" : "0";
             saveSetting("theme",settings.theme); saveSetting("accent",settings.accent);
             saveSetting("zoomAmount",settings.zoomAmount); saveSetting("zoomFrames",settings.zoomFrames);
             saveSetting("aiBridgeHost",settings.aiBridgeHost);
+            saveSetting("autoUpdate",settings.autoUpdate);
             applyTheme(mainPanel); dlg.close();
         };
         dlg.center(); dlg.show();
@@ -2616,5 +2737,8 @@
     }
 
     buildUI(thisObj);
+
+    // Silent daily update check once the panel is up.
+    try { checkForUpdates(false); } catch(eUpd) {}
 
 }(this));

@@ -1,9 +1,9 @@
 /**
- * License Key Generator — Edit Helper Panel (SELLER ONLY — do not distribute)
+ * License Key Generator — FXCore (SELLER ONLY — do not distribute)
  *
  * Run this in any ExtendScript host (or AE: File > Scripts > Run Script File)
- * to generate valid keys in the format EHP-XXXX-XXXX-CCCC.
- * Uses the same checksum algorithm as EditHelperPanel.jsx.
+ * to generate valid keys in the format FXC-XXXX-XXXX-CCCC.
+ * Uses the same checksum algorithm as FXCore.jsx.
  */
 (function () {
     function computeChecksum(payload) {
@@ -27,7 +27,7 @@
     var out = [];
     for (var i = 0; i < count; i++) {
         var a = randomBlock(), b = randomBlock();
-        out.push("EHP-" + a + "-" + b + "-" + computeChecksum(a + b));
+        out.push("FXC-" + a + "-" + b + "-" + computeChecksum(a + b));
     }
     alert("Generated license keys:\n\n" + out.join("\n"));
 })();

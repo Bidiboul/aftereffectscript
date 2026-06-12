@@ -1,9 +1,19 @@
 /**
- * Edit Helper Panel v0.9
+ * FXCore v1.0
  * ScriptUI Panel for Adobe After Effects (2024+)
  *
  * Place in: [AE Install]/Scripts/ScriptUI Panels/
- * Open via: Window > Edit Helper Panel
+ * Open via: Window > FXCore
+ *
+ * New in v1.0:
+ *  - Rebrand: "Edit Helper Panel" is now "FXCore", with a new dark/violet
+ *    neon visual identity matching the marketing assets — darker near-black
+ *    background, punchier purple accent (#9D5CFF) by default, glowing
+ *    outlined buttons, and an "FXCORE" logo header at the top of the panel.
+ *  - License key format changed from EHP-XXXX-XXXX-XXXX to
+ *    FXC-XXXX-XXXX-XXXX (see tools/generate_license_key.jsx).
+ *  - Settings are stored under a new key ("FXCore") — existing v0.x users
+ *    will start with default settings once.
  *
  * New in v0.9:
  *  - New "Camera" tab — Camera Rig / 3D Movement: Create Camera Rig (null +
@@ -53,11 +63,11 @@
  *    connection to a real LLM via a local "AI Bridge" — see README).
  */
 
-(function EditHelperPanel(thisObj) {
+(function FXCore(thisObj) {
 
-    var SCRIPT_NAME    = "Edit Helper Panel";
-    var SCRIPT_VERSION = "0.9";
-    var SETTINGS_KEY   = "EditHelperPanel";
+    var SCRIPT_NAME    = "FXCore";
+    var SCRIPT_VERSION = "1.0";
+    var SETTINGS_KEY   = "FXCore";
 
     // ============================================================
     //  SETTINGS
@@ -65,7 +75,7 @@
 
     var DEFAULTS = {
         theme       : "dark",
-        accent      : "#7C5CFF",
+        accent      : "#9D5CFF",
         zoomAmount  : 15,
         zoomFrames  : 12,
         licenseKey  : "",
@@ -99,14 +109,14 @@
     // ============================================================
 
     var THEMES = {
-        dark:  { bg: [0.13,0.13,0.15], panel: [0.17,0.17,0.20], text: [0.92,0.92,0.95],
-                 subtext: [0.60,0.60,0.66], btnHover: [0.26,0.26,0.31] },
+        dark:  { bg: [0.04,0.04,0.06], panel: [0.08,0.07,0.11], text: [0.96,0.96,0.98],
+                 subtext: [0.58,0.55,0.68], btnHover: [0.16,0.13,0.24] },
         light: { bg: [0.93,0.93,0.95], panel: [0.88,0.88,0.91], text: [0.12,0.12,0.15],
                  subtext: [0.40,0.40,0.46], btnHover: [0.80,0.80,0.85] }
     };
 
     var ACCENT_PRESETS = [
-        { name:"Violet",         hex:"#7C5CFF" },
+        { name:"FXCore Purple",  hex:"#9D5CFF" },
         { name:"Cyan",           hex:"#2FD3E0" },
         { name:"Rose",           hex:"#FF4D7D" },
         { name:"Lime",           hex:"#9BE15D" },
@@ -136,7 +146,7 @@
     }
     function validateLicenseKey(key) {
         key = key.toUpperCase().replace(/\s/g,"");
-        var m = key.match(/^EHP-([A-Z0-9]{4})-([A-Z0-9]{4})-([A-Z0-9]{4})$/);
+        var m = key.match(/^FXC-([A-Z0-9]{4})-([A-Z0-9]{4})-([A-Z0-9]{4})$/);
         if (!m) return false;
         return computeChecksum(m[1] + m[2]) === m[3];
     }
@@ -1858,6 +1868,9 @@
             g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[bg[0],bg[1],bg[2],1]));
             g.newPath(); g.rectPath(0,0,3,h);
             g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[ac[0],ac[1],ac[2],1]));
+            // Neon outline — glows brighter on hover, matching the FXCore marketing look.
+            g.newPath(); g.rectPath(0.5,0.5,w-1,h-1);
+            g.strokePath(g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],this._hover?0.8:0.3],1));
             var pen = g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],1],1.5);
             var is=14, ix=10, iy=(h-is)/2;
             if(ICONS[this._icon]) ICONS[this._icon](g,ix,iy,is,pen);
@@ -1880,6 +1893,32 @@
         allButtons.push(btn);
         allDescs.push(d);
         return col;
+    }
+
+    /**
+     * Branded header bar shown at the top of the panel: a glowing accent
+     * "bolt" mark followed by the split-color "FX" / "CORE" wordmark,
+     * matching the FXCore marketing visual identity.
+     */
+    function buildLogoHeader(parent) {
+        var grp = parent.add("group");
+        grp.alignment = ["fill","top"]; grp.preferredSize = [-1,34]; grp.margins = 0;
+        grp.onDraw = function() {
+            var g=this.graphics, ac=accent(), th=theme();
+            var w=this.size[0], h=this.size[1];
+            g.newPath(); g.rectPath(0,0,w,h);
+            g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[th.panel[0],th.panel[1],th.panel[2],1]));
+            var cx=17, cy=h/2, r=12;
+            g.newPath(); g.ellipsePath(cx-r,cy-r,r*2,r*2);
+            g.strokePath(g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],0.6],1.5));
+            var pen=g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],1],1.8);
+            if(ICONS.flash) ICONS.flash(g,cx-6,cy-8,12,pen);
+            var font=ScriptUI.newFont("Tahoma",ScriptUI.FontStyle.BOLD,17);
+            g.drawString("FX",g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],1],1),38,(h-17)/2,font);
+            g.drawString("CORE",g.newPen(g.PenType.SOLID_COLOR,[th.text[0],th.text[1],th.text[2],1],1),68,(h-17)/2,font);
+        };
+        allHeaders.push(grp);
+        return grp;
     }
 
     function sectionHeader(parent, title) {
@@ -1939,7 +1978,7 @@
                 saveSetting("licenseKey",settings.licenseKey);
                 licLbl.text="✓ Licence activée";
                 alert(SCRIPT_NAME+"\n\nLicence activée. Merci !");
-            } else alert(SCRIPT_NAME+"\n\nClé invalide (format EHP-XXXX-XXXX-XXXX).");
+            } else alert(SCRIPT_NAME+"\n\nClé invalide (format FXC-XXXX-XXXX-XXXX).");
         };
 
         var pAI = dlg.add("panel",undefined,"AI Assistant (optionnel)");
@@ -2143,6 +2182,8 @@
 
         panel.orientation="column"; panel.alignChildren=["fill","top"];
         panel.spacing=6; panel.margins=[8,8,8,6];
+
+        buildLogoHeader(panel);
 
         // ---- Tabbed area ----
         var tabs = panel.add("tabbedpanel");

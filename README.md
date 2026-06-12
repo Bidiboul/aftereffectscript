@@ -1,4 +1,4 @@
-# Edit Helper Panel
+# FXCore
 
 **A ScriptUI panel for Adobe After Effects that helps video editors save time with one-click effects for TikTok, anime, gaming, and action edits.**
 
@@ -131,7 +131,7 @@ Type a request in plain language and the assistant applies the corresponding act
   ```json
   {"action": "zoomIn", "reply": "Zoom in appliqué !"}
   ```
-- `action` must be one of the keys in the `DISPATCH` table inside `EditHelperPanel.jsx` (e.g. `whiteFlash`, `zoomIn`, `rgbSplit`, `textGlitch`, `overlayLightLeak`, …). The panel executes the matching function and shows `reply` in the chat.
+- `action` must be one of the keys in the `DISPATCH` table inside `FXCore.jsx` (e.g. `whiteFlash`, `zoomIn`, `rgbSplit`, `textGlitch`, `overlayLightLeak`, …). The panel executes the matching function and shows `reply` in the chat.
 - If the bridge is unreachable, returns invalid JSON, or `action` isn't recognized, the panel automatically falls back to local keyword matching.
 
 > ExtendScript's `Socket` object only supports plain TCP (no TLS), so the bridge must be a small local process — e.g. a Node.js or Python script on `127.0.0.1` that calls the Claude/OpenAI API over HTTPS on your behalf and forwards a one-line JSON response back to the panel.
@@ -139,7 +139,7 @@ Type a request in plain language and the assistant applies the corresponding act
 ### Customization & License
 
 - **Settings & Theme** button at the bottom of the panel: Dark/Light theme, accent color (6 presets or any custom hex), zoom intensity and duration. All settings persist between sessions.
-- **License system**: enter your `EHP-XXXX-XXXX-XXXX` key in Settings to switch from Trial to Licensed. Sellers generate keys with `tools/generate_license_key.jsx`.
+- **License system**: enter your `FXC-XXXX-XXXX-XXXX` key in Settings to switch from Trial to Licensed. Sellers generate keys with `tools/generate_license_key.jsx`.
 
 ### Project
 

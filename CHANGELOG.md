@@ -1,8 +1,23 @@
-# Changelog — Edit Helper Panel
+# Changelog — FXCore
 
 All notable changes to this project are documented in this file.
 
 Format: `[Version] — YYYY-MM-DD`
+
+---
+
+## [1.0.0] — 2026-06-12
+
+### Rebrand — FXCore
+
+- Renamed the project from **"Edit Helper Panel"** to **"FXCore"** (file renamed to `FXCore.jsx`, panel opens via **Window > FXCore**).
+- New default visual identity matching the FXCore marketing posters:
+  - Near-black dark theme background and panel colors with a purple tint.
+  - New default accent color **FXCore Purple (#9D5CFF)**, added as the first accent preset.
+  - Feature buttons now draw a glowing neon outline in the accent color (brighter on hover).
+  - New branded logo header at the top of the panel: glowing bolt icon + split-color "FX"/"CORE" wordmark.
+- License key format changed from `EHP-XXXX-XXXX-XXXX` to `FXC-XXXX-XXXX-XXXX` (existing EHP keys are no longer valid — contact for a new key).
+- Settings are stored under a new settings key; existing users will start with default settings once after updating.
 
 ---
 

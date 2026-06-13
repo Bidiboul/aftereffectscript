@@ -6,6 +6,21 @@ Format: `[Version] — YYYY-MM-DD`
 
 ---
 
+## [1.4.0] — 2026-06-13
+
+### Added — Customizable effect parameters (Phase 1: Edit tab)
+
+- New shared "options dialog" framework: effects can now open a small dialog (sliders + checkboxes, Annuler/Appliquer) before being applied.
+- **White Flash / Black Flash** — choose duration, fade in and/or fade out.
+- **Smooth Zoom In/Out, Punch Out→In, Punch In→Out** — choose intensity (%) and duration (frames).
+- **Shake Light/Medium/Heavy** — choose intensity and duration.
+- **RGB Split** — choose channel offset (px).
+- **Glow Boost** — choose threshold, radius and intensity.
+- **Freeze Frame** — choose freeze duration (frames).
+- More effects (Text, Sounds, Overlays, Templates, Transitions, Camera) will get the same treatment in upcoming versions.
+
+---
+
 ## [1.3.0] — 2026-06-13
 
 ### Added — Favorites & Recently Used

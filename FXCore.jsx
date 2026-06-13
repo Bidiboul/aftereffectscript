@@ -66,7 +66,7 @@
 (function FXCore(thisObj) {
 
     var SCRIPT_NAME    = "FXCore";
-    var SCRIPT_VERSION = "1.3";
+    var SCRIPT_VERSION = "1.4";
     var SETTINGS_KEY   = "FXCore";
 
     // ============================================================
@@ -164,7 +164,7 @@
         } else {
             for (var i=0;i<labels.length;i++) {
                 var a = findAction(labels[i]);
-                if (a) featureButton(content, a.label, a.icon, a.desc, a.run);
+                if (a) featureButton(content, a.label, a.icon, a.desc, a.run, a.params);
             }
         }
         try { applyTheme(mainPanelRef); } catch(e){}
@@ -413,26 +413,39 @@
         });
     }
 
-    function createFlash(color) {
+    function createFlash(color, opts) {
+        opts = opts || {};
+        var dur = opts.duration!=null ? opts.duration : 6;
+        var fadeIn  = !!opts.fadeIn;
+        var fadeOut = opts.fadeOut !== false; // default true
         withUndo((color==="white"?"White":"Black")+" Flash", function() {
             var comp = requireActiveComp();
-            var s = comp.time, e = Math.min(s + framesToSeconds(6, comp), comp.duration);
+            var s = comp.time, e = Math.min(s + framesToSeconds(dur, comp), comp.duration);
             var name = color==="white" ? "EH_White_Flash" : "EH_Black_Flash";
             var col  = color==="white" ? [1,1,1] : [0,0,0];
-            var fl = comp.layers.addSolid(col, name, comp.width, comp.height, comp.pixelAspect, e-s);
+            var fl = comp.layers.addSolid(col, name, comp.width, comp.height, comp.pixelAspect, Math.max(e-s,framesToSeconds(1,comp)));
             fl.inPoint = s; fl.name = name;
             var op = fl.property("Transform").property("Opacity");
-            op.setValueAtTime(s, 100); op.setValueAtTime(e, 0);
+            if (fadeIn && fadeOut) {
+                op.setValueAtTime(s, 0); op.setValueAtTime((s+e)/2, 100); op.setValueAtTime(e, 0);
+            } else if (fadeIn) {
+                op.setValueAtTime(s, 0); op.setValueAtTime(e, 100);
+            } else if (fadeOut) {
+                op.setValueAtTime(s, 100); op.setValueAtTime(e, 0);
+            } else {
+                op.setValue(100);
+            }
             fl.moveToBeginning();
         });
     }
 
-    function smoothZoom(mode) {
+    function smoothZoom(mode, opts) {
+        opts = opts || {};
         withUndo("Smooth Zoom "+mode, function() {
             var comp = requireActiveComp();
             if (!requireSelection(comp, "Smooth Zoom")) return;
-            var amt = settings.zoomAmount / 100;
-            var half = framesToSeconds(settings.zoomFrames, comp);
+            var amt = (opts.amount!=null ? opts.amount : settings.zoomAmount) / 100;
+            var half = framesToSeconds(opts.duration!=null ? opts.duration : settings.zoomFrames, comp);
             var t1 = comp.time, t2 = t1+half, t3 = t2+half;
             var sel = getSelectedLayers(comp);
             for (var i = 0; i < sel.length; i++) {
@@ -457,12 +470,16 @@
         });
     }
 
-    function quickShake(freq, amp, label) {
+    function quickShake(freq, amp, label, opts) {
+        opts = opts || {};
+        var dur = opts.duration!=null ? opts.duration : 10;
+        if (opts.intensity!=null) amp = opts.intensity;
+        if (opts.frequency!=null) freq = opts.frequency;
         withUndo("Quick Shake "+label, function() {
             var comp = requireActiveComp();
-            var s = comp.time, e = Math.min(s + framesToSeconds(10,comp), comp.duration);
+            var s = comp.time, e = Math.min(s + framesToSeconds(dur,comp), comp.duration);
             var adj = comp.layers.addSolid([0.5,0.5,0.5],"EH_Shake_"+label,
-                comp.width,comp.height,comp.pixelAspect,e-s);
+                comp.width,comp.height,comp.pixelAspect,Math.max(e-s,framesToSeconds(1,comp)));
             adj.adjustmentLayer=true; adj.inPoint=s; adj.name="EH_Shake_"+label; adj.moveToBeginning();
             var fx = adj.Effects.addProperty("ADBE Geometry2");
             try { fx.property("ADBE Geometry2-0005").setValue(100+amp/8); } catch(e2){}
@@ -471,7 +488,9 @@
         });
     }
 
-    function rgbSplit() {
+    function rgbSplit(opts) {
+        opts = opts || {};
+        var OFF = opts.offset!=null ? opts.offset : 10;
         withUndo("RGB Split", function() {
             var comp = requireActiveComp();
             if (!requireSelection(comp,"RGB Split")) return;
@@ -486,33 +505,39 @@
                 sc.property("ADBE Shift Channels-0004").setValue(b);
                 d.blendingMode=BlendingMode.ADD;
             }
-            var OFF=10,R=2,G=3,B=4;
-            mkDup("EH_RGB_Blue",  0, 4,OFF,OFF,B);
-            mkDup("EH_RGB_Green",-4, 0,OFF,G,OFF);
-            mkDup("EH_RGB_Red",   4, 0,R,OFF,OFF);
+            var R=2,G=3,B=4;
+            mkDup("EH_RGB_Blue",  0, OFF*0.4,OFF,OFF,B);
+            mkDup("EH_RGB_Green",-OFF*0.4, 0,OFF,G,OFF);
+            mkDup("EH_RGB_Red",   OFF*0.4, 0,R,OFF,OFF);
             src.enabled=false;
         });
     }
 
-    function glowBoost() {
+    function glowBoost(opts) {
+        opts = opts || {};
+        var threshold = opts.threshold!=null ? opts.threshold/100 : 0.6;
+        var radius    = opts.radius!=null ? opts.radius : 35;
+        var intensity = opts.intensity!=null ? opts.intensity : 1.5;
         withUndo("Glow Boost", function() {
             var comp = requireActiveComp();
             if (!requireSelection(comp,"Glow Boost")) return;
             var sel = getSelectedLayers(comp);
             for(var i=0;i<sel.length;i++){
                 var g=sel[i].Effects.addProperty("ADBE Glow");
-                g.property("ADBE Glow-0001").setValue(0.6);
-                g.property("ADBE Glow-0002").setValue(35);
-                g.property("ADBE Glow-0003").setValue(1.5);
+                g.property("ADBE Glow-0001").setValue(threshold);
+                g.property("ADBE Glow-0002").setValue(radius);
+                g.property("ADBE Glow-0003").setValue(intensity);
             }
         });
     }
 
-    function freezeFrame() {
+    function freezeFrame(opts) {
+        opts = opts || {};
         withUndo("Freeze Frame", function() {
             var comp = requireActiveComp();
             if (!requireSelection(comp,"Freeze Frame")) return;
             var sel = getSelectedLayers(comp).slice(0), t = comp.time;
+            var holdEnd = opts.duration!=null ? Math.min(t+framesToSeconds(opts.duration,comp), comp.duration) : comp.duration;
             for(var i=0;i<sel.length;i++){
                 var layer=sel[i];
                 if(t<=layer.inPoint||t>=layer.outPoint){
@@ -526,7 +551,7 @@
                 tr.setValueAtTime(t, tr.valueAtTime(t,false));
                 for(var k=1;k<=tr.numKeys;k++)
                     tr.setInterpolationTypeAtKey(k,KeyframeInterpolationType.HOLD);
-                frozen.inPoint=t; frozen.outPoint=comp.duration;
+                frozen.inPoint=t; frozen.outPoint=holdEnd;
             }
         });
     }
@@ -2039,7 +2064,86 @@
      * panels) with a custom-drawn icon + label, followed by a small grey
      * description line explaining what the action does.
      */
-    function featureButton(parent, label, iconName, desc, onClick) {
+    /**
+     * Generic options dialog for a customizable effect. `params` is an array
+     * of { key, label, type:"slider"|"checkbox", min, max, step, def, unit }.
+     * Calls onApply(opts) with the chosen values when the user clicks Appliquer.
+     */
+    function paramDialog(title, params, onApply) {
+        var th = theme(), ac = accent();
+        var dlg = new Window("dialog", SCRIPT_NAME+" — "+title);
+        dlg.orientation="column"; dlg.alignChildren=["fill","top"]; dlg.spacing=8; dlg.margins=14;
+        try { dlg.graphics.backgroundColor = dlg.graphics.newBrush(dlg.graphics.BrushType.SOLID_COLOR, th.bg); } catch(e){}
+
+        var getters = {};
+        for (var i=0;i<params.length;i++) {
+            var p = params[i];
+            var row = dlg.add("group");
+            row.orientation="row"; row.alignChildren=["left","center"]; row.alignment=["fill","top"]; row.spacing=8;
+
+            if (p.type === "checkbox") {
+                var cb = row.add("checkbox", undefined, p.label);
+                cb.value = !!p.def;
+                getters[p.key] = function(c){ return function(){ return c.value; }; }(cb);
+            } else { // slider
+                var lbl = row.add("statictext", undefined, p.label);
+                lbl.preferredSize = [110,-1];
+                var sl = row.add("slider", undefined, p.def, p.min, p.max);
+                sl.preferredSize = [120,-1];
+                var valTxt = row.add("statictext", undefined, String(p.def)+(p.unit||""));
+                valTxt.preferredSize = [44,-1];
+                (function(sl,valTxt,p){
+                    sl.onChanging = sl.onChange = function(){
+                        var v = p.step ? Math.round(sl.value/p.step)*p.step : Math.round(sl.value);
+                        valTxt.text = String(v)+(p.unit||"");
+                    };
+                })(sl,valTxt,p);
+                getters[p.key] = function(sl,p){ return function(){
+                    var v = sl.value;
+                    return p.step ? Math.round(v/p.step)*p.step : Math.round(v);
+                }; }(sl,p);
+            }
+        }
+
+        var gBtns = dlg.add("group"); gBtns.alignment=["right","top"]; gBtns.spacing=8;
+        gBtns.add("button",undefined,"Annuler").onClick = function(){ dlg.close(); };
+        var btnApply = gBtns.add("button",undefined,"Appliquer");
+        btnApply.onClick = function(){
+            var opts = {};
+            for (var k in getters) if (getters.hasOwnProperty(k)) opts[k] = getters[k]();
+            dlg.close();
+            onApply(opts);
+        };
+        dlg.center(); dlg.show();
+    }
+
+    // Shared parameter specs reused by several effects' option dialogs.
+    var PARAMS_FLASH = [
+        { key:"duration", label:"Durée (frames)", type:"slider", min:1, max:30, def:6, step:1, unit:"f" },
+        { key:"fadeIn",  label:"Fondu d'entrée (0% → 100%)", type:"checkbox", def:false },
+        { key:"fadeOut", label:"Fondu de sortie (100% → 0%)", type:"checkbox", def:true }
+    ];
+    var PARAMS_ZOOM = [
+        { key:"amount",   label:"Intensité (%)",      type:"slider", min:5,  max:100, def:settings.zoomAmount, step:1, unit:"%" },
+        { key:"duration", label:"Durée (frames)",     type:"slider", min:2,  max:60,  def:settings.zoomFrames, step:1, unit:"f" }
+    ];
+    var PARAMS_SHAKE = function(amp){ return [
+        { key:"intensity", label:"Intensité (wiggle)", type:"slider", min:5,  max:80, def:amp, step:1, unit:"" },
+        { key:"duration",  label:"Durée (frames)",     type:"slider", min:2,  max:60, def:10,  step:1, unit:"f" }
+    ]; };
+    var PARAMS_RGB = [
+        { key:"offset", label:"Décalage (px)", type:"slider", min:2, max:40, def:10, step:1, unit:"px" }
+    ];
+    var PARAMS_GLOW = [
+        { key:"threshold", label:"Seuil (%)",     type:"slider", min:10, max:100, def:60,  step:1, unit:"%" },
+        { key:"radius",    label:"Rayon (px)",    type:"slider", min:5,  max:150, def:35,  step:1, unit:"px" },
+        { key:"intensity", label:"Intensité",     type:"slider", min:0.5,max:5,   def:1.5, step:0.1, unit:"" }
+    ];
+    var PARAMS_FREEZE = [
+        { key:"duration", label:"Durée du gel (frames)", type:"slider", min:1, max:120, def:24, step:1, unit:"f" }
+    ];
+
+    function featureButton(parent, label, iconName, desc, onClick, paramsSpec) {
         // The whole card (button + description) lives inside one neon-outlined
         // frame, matching the FXCore marketing look.
         var col = parent.add("group");
@@ -2087,7 +2191,17 @@
         };
         btn.addEventListener("mouseover",function(){this._hover=true; safeRedraw(this);});
         btn.addEventListener("mouseout", function(){this._hover=false; safeRedraw(this);});
-        btn.onClick = function(){ onClick(); recordRecent(label); };
+        btn.onClick = function(){
+            if (paramsSpec) {
+                paramDialog(label, paramsSpec, function(opts){ onClick(opts); recordRecent(label); });
+            } else {
+                onClick(); recordRecent(label);
+            }
+        };
+        btn._hasParams = !!paramsSpec;
+        if (paramsSpec) {
+            btn.helpTip = desc + "\n(double-clic ou bouton ⚙ pour régler les paramètres)";
+        }
 
         // Favorite toggle (star).
         var starBtn = row.add("button", undefined, "");
@@ -2126,7 +2240,7 @@
         allHeaders.push(col);   // so the card frame is redrawn on theme change
         allDescs.push(d);
 
-        if (!findAction(label)) actionRegistry.push({ label:label, icon:iconName, desc:desc, run:onClick });
+        if (!findAction(label)) actionRegistry.push({ label:label, icon:iconName, desc:desc, run:onClick, params:paramsSpec });
 
         return col;
     }
@@ -2620,53 +2734,53 @@
             "Crée un calque d'ajustement (EH_Adjustment) au-dessus de la sélection, ou sur toute la comp si rien n'est sélectionné.",
             createAdjustmentLayer);
         featureButton(tabEdit,"White Flash","flash",
-            "Ajoute un flash blanc de 6 frames au temps courant, opacité 100% → 0%.",
-            function(){createFlash("white");});
+            "Ajoute un flash blanc, opacité 100% → 0% (durée et fondus réglables).",
+            function(opts){createFlash("white",opts);},PARAMS_FLASH);
         featureButton(tabEdit,"Black Flash","flash",
-            "Ajoute un flash noir de 6 frames au temps courant, opacité 100% → 0%.",
-            function(){createFlash("black");});
+            "Ajoute un flash noir, opacité 100% → 0% (durée et fondus réglables).",
+            function(opts){createFlash("black",opts);},PARAMS_FLASH);
 
         sectionHeader(tabEdit, "ZOOMS");
         featureButton(tabEdit,"Smooth Zoom In","zoomIn",
-            "Zoom avant progressif et adouci sur les calques sélectionnés (intensité réglable dans Settings).",
-            function(){smoothZoom("in");});
+            "Zoom avant progressif et adouci sur les calques sélectionnés (intensité et durée réglables).",
+            function(opts){smoothZoom("in",opts);},PARAMS_ZOOM);
         featureButton(tabEdit,"Smooth Zoom Out","zoomOut",
-            "Zoom arrière progressif et adouci sur les calques sélectionnés.",
-            function(){smoothZoom("out");});
+            "Zoom arrière progressif et adouci sur les calques sélectionnés (intensité et durée réglables).",
+            function(opts){smoothZoom("out",opts);},PARAMS_ZOOM);
         featureButton(tabEdit,"Punch Out → In","punch",
-            "Effet de recul : zoom arrière puis retour à l'échelle d'origine.",
-            function(){smoothZoom("outin");});
+            "Effet de recul : zoom arrière puis retour à l'échelle d'origine (intensité et durée réglables).",
+            function(opts){smoothZoom("outin",opts);},PARAMS_ZOOM);
         featureButton(tabEdit,"Punch In → Out","punch",
-            "Effet d'impact : zoom avant puis retour à l'échelle d'origine.",
-            function(){smoothZoom("inout");});
+            "Effet d'impact : zoom avant puis retour à l'échelle d'origine (intensité et durée réglables).",
+            function(opts){smoothZoom("inout",opts);},PARAMS_ZOOM);
 
         sectionHeader(tabEdit, "SHAKES");
         featureButton(tabEdit,"Shake Light","shake",
-            "Petit shake non destructif (calque d'ajustement, 10 frames).",
-            function(){quickShake(10,15,"Light");});
+            "Petit shake non destructif (calque d'ajustement, intensité et durée réglables).",
+            function(opts){quickShake(10,15,"Light",opts);},PARAMS_SHAKE(15));
         featureButton(tabEdit,"Shake Medium","shake",
-            "Shake moyen non destructif (calque d'ajustement, 10 frames).",
-            function(){quickShake(15,30,"Medium");});
+            "Shake moyen non destructif (calque d'ajustement, intensité et durée réglables).",
+            function(opts){quickShake(15,30,"Medium",opts);},PARAMS_SHAKE(30));
         featureButton(tabEdit,"Shake Heavy","shake",
-            "Gros shake non destructif (calque d'ajustement, 10 frames).",
-            function(){quickShake(20,50,"Heavy");});
+            "Gros shake non destructif (calque d'ajustement, intensité et durée réglables).",
+            function(opts){quickShake(20,50,"Heavy",opts);},PARAMS_SHAKE(50));
         featureButton(tabEdit,"Impact Shake (expression)","shake",
             "Applique wiggle(18, 35) directement sur la Position des calques sélectionnés.",
             impactShake);
 
         sectionHeader(tabEdit, "EFFECTS");
         featureButton(tabEdit,"RGB Split","rgb",
-            "Sépare les canaux R/G/B du calque sélectionné en 3 copies décalées (Shift Channels + Add).",
-            rgbSplit);
+            "Sépare les canaux R/G/B du calque sélectionné en 3 copies décalées (décalage réglable).",
+            function(opts){rgbSplit(opts);},PARAMS_RGB);
         featureButton(tabEdit,"Glow Boost","glow",
-            "Ajoute l'effet Glow natif (Threshold 60, Radius 35, Intensity 1.5).",
-            glowBoost);
+            "Ajoute l'effet Glow natif (seuil, rayon et intensité réglables).",
+            function(opts){glowBoost(opts);},PARAMS_GLOW);
         featureButton(tabEdit,"Speed Lines","lines",
             "Crée des lignes de vitesse radiales façon anime (Fractal Noise + Polar Coordinates).",
             speedLines);
         featureButton(tabEdit,"Freeze Frame","freeze",
-            "Fige le calque sélectionné au temps courant (split + time remap hold).",
-            freezeFrame);
+            "Fige le calque sélectionné au temps courant (durée du gel réglable).",
+            function(opts){freezeFrame(opts);},PARAMS_FREEZE);
 
         sectionHeader(tabEdit, "PROJECT");
         featureButton(tabEdit,"Auto Precomp Selected","precomp",

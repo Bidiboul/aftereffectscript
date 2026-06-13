@@ -66,7 +66,7 @@
 (function FXCore(thisObj) {
 
     var SCRIPT_NAME    = "FXCore";
-    var SCRIPT_VERSION = "1.4";
+    var SCRIPT_VERSION = "1.5";
     var SETTINGS_KEY   = "FXCore";
 
     // ============================================================
@@ -657,13 +657,15 @@
     }
 
     /** 1. Typewriter — characters appear one by one (opacity reveal, char mode). */
-    function textTypewriter() {
+    function textTypewriter(opts) {
+        opts = opts || {};
+        var dur = opts.duration!=null ? opts.duration : 24;
         withUndo("Text: Typewriter", function() {
             var comp = requireActiveComp();
             if (!requireSelection(comp, "Typewriter")) return;
             var sel = getSelectedLayers(comp);
             for (var i = 0; i < sel.length; i++)
-                applyTextOpacityReveal(sel[i], "EH_Typewriter", 0, 24);
+                applyTextOpacityReveal(sel[i], "EH_Typewriter", 0, dur);
         });
     }
 
@@ -671,7 +673,10 @@
      * 2. Fade Up — characters fade in from below (opacity + Y offset).
      * durationFrames covers the full reveal.
      */
-    function textFadeUp() {
+    function textFadeUp(opts) {
+        opts = opts || {};
+        var dur = opts.duration!=null ? opts.duration : 18;
+        var dist = opts.distance!=null ? opts.distance : 40;
         withUndo("Text: Fade Up", function() {
             var comp = requireActiveComp();
             if (!requireSelection(comp, "Fade Up")) return;
@@ -687,7 +692,7 @@
 
                 // Y offset: +40 px (below)
                 var pos = props.addProperty("ADBE Text Position");
-                pos.setValue([0, 40]);
+                pos.setValue([0, dist]);
                 // Opacity: 0%
                 var op = props.addProperty("ADBE Text Opacity");
                 op.setValue(0);
@@ -696,7 +701,7 @@
                 var sel2 = sels.addProperty("ADBE Text Selector");
                 try { sel2.property("ADBE Text Range Units").setValue(3); } catch(e) {} // Words
 
-                var t1 = comp.time, t2 = t1 + framesToSeconds(18, comp);
+                var t1 = comp.time, t2 = t1 + framesToSeconds(dur, comp);
                 var endProp = sel2.property("ADBE Text Selector End");
                 endProp.setValueAtTime(t1, 0);
                 endProp.setValueAtTime(t2, 100);
@@ -709,7 +714,9 @@
      * 3. Bounce In — characters scale from 0 → 120 → 100 % (two keyframes on Scale).
      * Uses a text Scale animator; the bounce is baked in keyframes.
      */
-    function textBounceIn() {
+    function textBounceIn(opts) {
+        opts = opts || {};
+        var overshoot = opts.overshoot!=null ? opts.overshoot : 120;
         withUndo("Text: Bounce In", function() {
             var comp = requireActiveComp();
             if (!requireSelection(comp, "Bounce In")) return;
@@ -743,7 +750,7 @@
 
                 // Scale overshoots: 0 → 120 → 100 (using non-uniform values)
                 scProp.setValueAtTime(t1, [0, 0]);
-                scProp.setValueAtTime(t2, [120, 120]);
+                scProp.setValueAtTime(t2, [overshoot, overshoot]);
                 scProp.setValueAtTime(t3, [100, 100]);
                 easeLastKeys(scProp, 3);
             }
@@ -754,7 +761,10 @@
      * 4. Glitch — rapid position jitter via wiggle expression on the selector offset,
      * combined with opacity flicker.
      */
-    function textGlitch() {
+    function textGlitch(opts) {
+        opts = opts || {};
+        var amp = opts.intensity!=null ? opts.intensity : 8;
+        var speed = opts.speed!=null ? opts.speed : 24;
         withUndo("Text: Glitch", function() {
             var comp = requireActiveComp();
             if (!requireSelection(comp, "Glitch")) return;
@@ -769,10 +779,10 @@
                 var props = anim.property("ADBE Text Animator Properties");
 
                 var posProp = props.addProperty("ADBE Text Position");
-                posProp.expression = "var r=wiggle(30,8); [r[0], r[1]];";
+                posProp.expression = "var r=wiggle(30,"+amp+"); [r[0], r[1]];";
 
                 var opProp = props.addProperty("ADBE Text Opacity");
-                opProp.expression = "var t=Math.floor(time*24)%3; t===0?0:100;";
+                opProp.expression = "var t=Math.floor(time*"+speed+")%3; t===0?0:100;";
 
                 var sels = anim.property("ADBE Text Selectors");
                 var sel2 = sels.addProperty("ADBE Text Selector");
@@ -785,12 +795,15 @@
     }
 
     /** 5. Slide From Left — position X offset from -200 → 0. */
-    function textSlide(direction) {
+    function textSlide(direction, opts) {
+        opts = opts || {};
+        var dur = opts.duration!=null ? opts.duration : 16;
+        var dist = opts.distance!=null ? opts.distance : 200;
         withUndo("Text: Slide "+direction, function() {
             var comp = requireActiveComp();
             if (!requireSelection(comp, "Slide")) return;
-            var dx = direction==="left" ? -200 : (direction==="right" ? 200 : 0);
-            var dy = direction==="top"  ? -60  : (direction==="bottom" ? 60  : 0);
+            var dx = direction==="left" ? -dist : (direction==="right" ? dist : 0);
+            var dy = direction==="top"  ? -(dist*0.3)  : (direction==="bottom" ? (dist*0.3)  : 0);
             var sel = getSelectedLayers(comp);
             for (var i = 0; i < sel.length; i++) {
                 var layer = sel[i];
@@ -810,7 +823,7 @@
                 var sel2 = sels.addProperty("ADBE Text Selector");
                 try { sel2.property("ADBE Text Range Units").setValue(4); } catch(e) {} // Lines
 
-                var t1=comp.time, t2=t1+framesToSeconds(16,comp);
+                var t1=comp.time, t2=t1+framesToSeconds(dur,comp);
                 var ep = sel2.property("ADBE Text Selector End");
                 ep.setValueAtTime(t1,0); ep.setValueAtTime(t2,100);
                 easeLastKeys(ep,2);
@@ -819,13 +832,15 @@
     }
 
     /** 6. Word Reveal — word by word opacity reveal (elegant for titles). */
-    function textWordReveal() {
+    function textWordReveal(opts) {
+        opts = opts || {};
+        var dur = opts.duration!=null ? opts.duration : 20;
         withUndo("Text: Word Reveal", function() {
             var comp = requireActiveComp();
             if (!requireSelection(comp, "Word Reveal")) return;
             var sel = getSelectedLayers(comp);
             for (var i = 0; i < sel.length; i++)
-                applyTextOpacityReveal(sel[i], "EH_WordReveal", 0, 20);
+                applyTextOpacityReveal(sel[i], "EH_WordReveal", 0, dur);
         });
     }
 
@@ -2142,6 +2157,24 @@
     var PARAMS_FREEZE = [
         { key:"duration", label:"Durée du gel (frames)", type:"slider", min:1, max:120, def:24, step:1, unit:"f" }
     ];
+    var PARAMS_TEXT_REVEAL = function(def){ return [
+        { key:"duration", label:"Durée (frames)", type:"slider", min:4, max:60, def:def, step:1, unit:"f" }
+    ]; };
+    var PARAMS_TEXT_FADEUP = [
+        { key:"duration", label:"Durée (frames)",  type:"slider", min:4,  max:60,  def:18, step:1, unit:"f" },
+        { key:"distance", label:"Distance (px)",   type:"slider", min:10, max:150, def:40, step:1, unit:"px" }
+    ];
+    var PARAMS_TEXT_BOUNCE = [
+        { key:"overshoot", label:"Overshoot (%)", type:"slider", min:100, max:180, def:120, step:1, unit:"%" }
+    ];
+    var PARAMS_TEXT_GLITCH = [
+        { key:"intensity", label:"Intensité (jitter)", type:"slider", min:1, max:30, def:8,  step:1, unit:"" },
+        { key:"speed",     label:"Vitesse (flicker)",  type:"slider", min:4, max:48, def:24, step:1, unit:"" }
+    ];
+    var PARAMS_TEXT_SLIDE = [
+        { key:"duration", label:"Durée (frames)", type:"slider", min:4,  max:60,  def:16,  step:1, unit:"f" },
+        { key:"distance", label:"Distance (px)",  type:"slider", min:20, max:500, def:200, step:1, unit:"px" }
+    ];
 
     function featureButton(parent, label, iconName, desc, onClick, paramsSpec) {
         // The whole card (button + description) lives inside one neon-outlined
@@ -2812,36 +2845,36 @@
 
         sectionHeader(tabText,"REVEAL");
         featureButton(tabText,"Typewriter","typewriter",
-            "Affiche le texte caractère par caractère (opacité, 24 frames).",
-            textTypewriter);
+            "Affiche le texte caractère par caractère (durée réglable).",
+            function(opts){textTypewriter(opts);},PARAMS_TEXT_REVEAL(24));
         featureButton(tabText,"Fade Up","fadeup",
-            "Les mots remontent de 40px en apparaissant en fondu (18 frames).",
-            textFadeUp);
+            "Les mots remontent en apparaissant en fondu (distance et durée réglables).",
+            function(opts){textFadeUp(opts);},PARAMS_TEXT_FADEUP);
         featureButton(tabText,"Word Reveal","word",
-            "Révèle le texte mot par mot en fondu (20 frames).",
-            textWordReveal);
+            "Révèle le texte mot par mot en fondu (durée réglable).",
+            function(opts){textWordReveal(opts);},PARAMS_TEXT_REVEAL(20));
         featureButton(tabText,"Bounce In","bounce",
-            "Les caractères rebondissent : scale 0% → 120% → 100% avec Easy Ease.",
-            textBounceIn);
+            "Les caractères rebondissent : scale 0% → overshoot → 100% (overshoot réglable).",
+            function(opts){textBounceIn(opts);},PARAMS_TEXT_BOUNCE);
 
         sectionHeader(tabText,"SLIDES");
         featureButton(tabText,"Slide From Left","slide",
-            "Le texte glisse depuis la gauche, ligne par ligne, en fondu.",
-            function(){textSlide("left");});
+            "Le texte glisse depuis la gauche, ligne par ligne, en fondu (distance et durée réglables).",
+            function(opts){textSlide("left",opts);},PARAMS_TEXT_SLIDE);
         featureButton(tabText,"Slide From Right","slide",
-            "Le texte glisse depuis la droite, ligne par ligne, en fondu.",
-            function(){textSlide("right");});
+            "Le texte glisse depuis la droite, ligne par ligne, en fondu (distance et durée réglables).",
+            function(opts){textSlide("right",opts);},PARAMS_TEXT_SLIDE);
         featureButton(tabText,"Slide From Top","slide",
-            "Le texte glisse depuis le haut, ligne par ligne, en fondu.",
-            function(){textSlide("top");});
+            "Le texte glisse depuis le haut, ligne par ligne, en fondu (distance et durée réglables).",
+            function(opts){textSlide("top",opts);},PARAMS_TEXT_SLIDE);
         featureButton(tabText,"Slide From Bottom","slide",
-            "Le texte glisse depuis le bas, ligne par ligne, en fondu.",
-            function(){textSlide("bottom");});
+            "Le texte glisse depuis le bas, ligne par ligne, en fondu (distance et durée réglables).",
+            function(opts){textSlide("bottom",opts);},PARAMS_TEXT_SLIDE);
 
         sectionHeader(tabText,"SPECIAL");
         featureButton(tabText,"Glitch Text","glitch",
-            "Jitter de position + clignotement d'opacité par caractère, via expressions.",
-            textGlitch);
+            "Jitter de position + clignotement d'opacité par caractère (intensité et vitesse réglables).",
+            function(opts){textGlitch(opts);},PARAMS_TEXT_GLITCH);
         featureButton(tabText,"TikTok Caption Style","captionIcon",
             "Contour noir + ombre portée sur le texte sélectionné, plus une animation Bounce In.",
             captionStyle);

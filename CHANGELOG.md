@@ -6,6 +6,19 @@ Format: `[Version] — YYYY-MM-DD`
 
 ---
 
+## [1.5.0] — 2026-06-13
+
+### Added — Customizable effect parameters (Phase 2: Text tab)
+
+- **Typewriter / Word Reveal** — choose reveal duration.
+- **Fade Up** — choose duration and rise distance.
+- **Bounce In** — choose scale overshoot percentage.
+- **Slide From Left/Right/Top/Bottom** — choose slide distance and duration.
+- **Glitch Text** — choose jitter intensity and flicker speed.
+- Next: Sounds, Overlays, Templates, Transitions and Camera tabs.
+
+---
+
 ## [1.4.0] — 2026-06-13
 
 ### Added — Customizable effect parameters (Phase 1: Edit tab)

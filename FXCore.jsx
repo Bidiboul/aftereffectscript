@@ -66,7 +66,7 @@
 (function FXCore(thisObj) {
 
     var SCRIPT_NAME    = "FXCore";
-    var SCRIPT_VERSION = "1.1";
+    var SCRIPT_VERSION = "1.2";
     var SETTINGS_KEY   = "FXCore";
 
     // ============================================================
@@ -75,7 +75,7 @@
 
     var DEFAULTS = {
         theme       : "dark",
-        accent      : "#9D5CFF",
+        accent      : "#8B35FF",
         zoomAmount  : 15,
         zoomFrames  : 12,
         licenseKey  : "",
@@ -221,14 +221,14 @@
     // ============================================================
 
     var THEMES = {
-        dark:  { bg: [0.04,0.04,0.06], panel: [0.08,0.07,0.11], text: [0.96,0.96,0.98],
-                 subtext: [0.58,0.55,0.68], btnHover: [0.16,0.13,0.24] },
+        dark:  { bg: [0.043,0.043,0.071], panel: [0.078,0.078,0.129], text: [0.949,0.949,0.949],
+                 subtext: [0.604,0.604,0.686], btnHover: [0.110,0.110,0.169] },
         light: { bg: [0.93,0.93,0.95], panel: [0.88,0.88,0.91], text: [0.12,0.12,0.15],
                  subtext: [0.40,0.40,0.46], btnHover: [0.80,0.80,0.85] }
     };
 
     var ACCENT_PRESETS = [
-        { name:"FXCore Purple",  hex:"#9D5CFF" },
+        { name:"FXCore Purple",  hex:"#8B35FF" },
         { name:"Cyan",           hex:"#2FD3E0" },
         { name:"Rose",           hex:"#FF4D7D" },
         { name:"Lime",           hex:"#9BE15D" },
@@ -2322,17 +2322,22 @@
     //  MAIN UI — TABBED PANEL
     // ============================================================
 
-    // Scrollable tab support: each tab holds a clipped viewport + a content
-    // column moved vertically by a scrollbar, so long tabs stay usable at any
-    // panel height.
-    var scrollTabs = [];
+    // Scrollable section support: each sidebar section is a clipped viewport
+    // + a content column moved vertically by a scrollbar, so long sections
+    // stay usable at any panel height. Only one section is visible at a
+    // time (toggled by the sidebar nav).
+    var scrollSections = [];
+    var sidebarBtns = [];
 
-    function makeScrollableTab(tabs, name) {
-        var tab = tabs.add("tab", undefined, name);
-        tab.orientation="row"; tab.alignChildren=["fill","fill"];
-        tab.spacing=2; tab.margins=2;
+    function makeScrollableSection(stack, name) {
+        var sec = stack.add("group");
+        sec.orientation="row"; sec.alignChildren=["fill","fill"];
+        sec.spacing=2; sec.margins=2;
+        sec.alignment=["fill","fill"];
+        sec.visible=false;
+        sec._navName=name;
 
-        var viewport = tab.add("group");
+        var viewport = sec.add("group");
         viewport.orientation="column"; viewport.alignChildren=["fill","top"];
         viewport.alignment=["fill","fill"];
         viewport.preferredSize=[280,420];
@@ -2342,20 +2347,21 @@
         content.spacing=5; content.margins=[4,4,4,4];
         content.alignment=["fill","top"];
 
-        var sb = tab.add("scrollbar");
+        var sb = sec.add("scrollbar");
         sb.alignment=["right","fill"]; sb.preferredSize=[14,-1];
         sb.minvalue=0; sb.maxvalue=0; sb.value=0;
         sb.onChanging = sb.onChange = function() {
             try { content.location = [content.location[0], -Math.round(this.value)]; } catch(e){}
         };
 
-        scrollTabs.push({ viewport:viewport, content:content, sb:sb });
+        scrollSections.push({ section:sec, viewport:viewport, content:content, sb:sb });
         return content;
     }
 
     function updateScrollbars() {
-        for (var i=0;i<scrollTabs.length;i++) {
-            var st=scrollTabs[i];
+        for (var i=0;i<scrollSections.length;i++) {
+            var st=scrollSections[i];
+            if (!st.section.visible) continue;
             try {
                 var vh = st.viewport.size ? st.viewport.size[1] : 0;
                 var ch = st.content.size ? st.content.size[1] : 0;
@@ -2370,6 +2376,53 @@
         }
     }
 
+    /** Shows the section with the given nav name and hides the others, updating sidebar highlight + scrollbars. */
+    function showSection(panel, key) {
+        for (var i=0;i<scrollSections.length;i++) {
+            scrollSections[i].section.visible = (scrollSections[i].section._navName === key);
+        }
+        for (var j=0;j<sidebarBtns.length;j++) {
+            sidebarBtns[j]._active = (sidebarBtns[j]._navKey === key);
+            safeRedraw(sidebarBtns[j]);
+        }
+        try { panel.layout.layout(true); } catch(e){}
+        updateScrollbars();
+    }
+
+    /** Sidebar nav button: icon stacked above a short label, accent bar + glow when active. */
+    function sidebarButton(parent, label, iconName, key, onSelect) {
+        var btn = parent.add("button", undefined, "");
+        btn.alignment=["fill","top"];
+        btn.preferredSize=[-1,46];
+        btn._label=label; btn._icon=iconName; btn._navKey=key; btn._active=false; btn._hover=false;
+        btn.onDraw = function() {
+            var g=this.graphics, th=theme(), ac=accent();
+            var w=this.size[0], h=this.size[1];
+            var bg = this._active ? th.btnHover : (this._hover ? th.btnHover : th.panel);
+            g.newPath(); g.rectPath(0,0,w,h);
+            g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[bg[0],bg[1],bg[2],1]));
+            if (this._active) {
+                g.newPath(); g.rectPath(0,0,3,h);
+                g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[ac[0],ac[1],ac[2],1]));
+            }
+            var iconCol = this._active ? [ac[0],ac[1],ac[2],1] : [th.subtext[0],th.subtext[1],th.subtext[2],1];
+            var pen=g.newPen(g.PenType.SOLID_COLOR,iconCol,1.6);
+            var is=16;
+            if(ICONS[this._icon]) ICONS[this._icon](g,Math.round((w-is)/2),6,is,pen);
+            var font=ScriptUI.newFont("Tahoma",ScriptUI.FontStyle.REGULAR,9);
+            var ts=g.measureString(this._label,font);
+            var textCol = this._active ? [th.text[0],th.text[1],th.text[2],1] : [th.subtext[0],th.subtext[1],th.subtext[2],1];
+            g.drawString(this._label,g.newPen(g.PenType.SOLID_COLOR,textCol,1),
+                Math.max(0,Math.round((w-ts[0])/2)),28,font);
+        };
+        btn.addEventListener("mouseover",function(){this._hover=true; safeRedraw(this);});
+        btn.addEventListener("mouseout", function(){this._hover=false; safeRedraw(this);});
+        btn.onClick = function(){ onSelect(key); };
+        sidebarBtns.push(btn);
+        allButtons.push(btn);
+        return btn;
+    }
+
     function buildUI(thisObj) {
         var panel = (thisObj instanceof Panel)
             ? thisObj
@@ -2380,13 +2433,60 @@
 
         buildLogoHeader(panel);
 
-        // ---- Tabbed area ----
-        var tabs = panel.add("tabbedpanel");
-        tabs.alignment=["fill","fill"];
-        tabs.onChange = function(){ updateScrollbars(); };
+        // ---- Body: sidebar nav + section stack ----
+        var body = panel.add("group");
+        body.orientation="row"; body.alignChildren=["fill","fill"]; body.spacing=4;
+        body.alignment=["fill","fill"];
 
-        // ---- TAB 1: EDIT ----
-        var tabEdit = makeScrollableTab(tabs,"Edit");
+        var sidebar = body.add("group");
+        sidebar.orientation="column"; sidebar.alignChildren=["fill","top"];
+        sidebar.spacing=2; sidebar.margins=0;
+        sidebar.preferredSize=[60,-1]; sidebar.minimumSize=[60,0]; sidebar.maximumSize=[60,10000];
+
+        var stack = body.add("group");
+        stack.orientation="stack"; stack.alignChildren=["fill","fill"];
+        stack.alignment=["fill","fill"];
+
+        // ---- SECTION: HOME ----
+        var tabHome = makeScrollableSection(stack,"Home");
+
+        var homeTitle = tabHome.add("group");
+        homeTitle.alignment=["fill","top"]; homeTitle.preferredSize=[-1,28]; homeTitle.margins=0;
+        homeTitle.onDraw = function(){
+            var g=this.graphics, th=theme(), ac=accent();
+            var font=ScriptUI.newFont("Tahoma",ScriptUI.FontStyle.BOLD,13);
+            g.drawString("One panel. Max impact.",
+                g.newPen(g.PenType.SOLID_COLOR,[th.text[0],th.text[1],th.text[2],1],1),0,2,font);
+        };
+        allHeaders.push(homeTitle);
+
+        sectionHeader(tabHome,"COMBOS RAPIDES");
+        featureButton(tabHome,"Anime Impact","combo",
+            "Combo : Black Flash + Speed Lines + Shake Heavy + Smooth Zoom In.",
+            templateAnimeImpact);
+        featureButton(tabHome,"Intro Punch","combo",
+            "Combo : Punch In→Out + Shake Medium + White Flash + Glow Boost.",
+            templateIntroPunch);
+        featureButton(tabHome,"Glitch Transition","combo",
+            "Combo : RGB Split + VHS Glitch + Shake Medium.",
+            templateGlitchTransition);
+        featureButton(tabHome,"Cinematic Reveal","combo",
+            "Combo : Smooth Zoom In + Tint Cinematic + Vignette + Film Grain.",
+            templateCinematicReveal);
+
+        sectionHeader(tabHome,"ACTIONS RAPIDES");
+        featureButton(tabHome,"Auto Precomp Selected","precomp",
+            "Précompose la sélection dans EH_Precomp_XX (auto-incrémenté).",
+            autoPrecompSelected);
+        featureButton(tabHome,"Organize Project","folder",
+            "Crée les dossiers standards et range tous les éléments du projet par type.",
+            organizeProject);
+        featureButton(tabHome,"Clean EH_ Layers","trash",
+            "Supprime tous les calques générés par le panel (préfixe EH_) dans la comp active.",
+            removeEHLayers);
+
+        // ---- SECTION: EDIT ----
+        var tabEdit = makeScrollableSection(stack,"Edit");
 
         sectionHeader(tabEdit, "LAYERS");
         featureButton(tabEdit,"Adjustment Layer","adjustment",
@@ -2462,7 +2562,7 @@
             addToRenderQueue);
 
         // ---- TAB 2: TEXT ----
-        var tabText = makeScrollableTab(tabs,"Text");
+        var tabText = makeScrollableSection(stack,"Text");
 
         var note = tabText.add("statictext",undefined,
             "⚠ Sélectionnez un calque de texte avant d'appliquer une animation.",
@@ -2506,11 +2606,11 @@
             captionStyle);
 
         // ---- TAB 3: SOUNDS ----
-        var tabSounds = makeScrollableTab(tabs,"Sounds");
+        var tabSounds = makeScrollableSection(stack,"Sounds");
         buildSoundsTab(tabSounds);
 
         // ---- TAB 4: OVERLAYS ----
-        var tabOverlays = makeScrollableTab(tabs,"Overlays");
+        var tabOverlays = makeScrollableSection(stack,"Overlays");
 
         sectionHeader(tabOverlays,"TEXTURE");
         featureButton(tabOverlays,"Film Grain","grain",
@@ -2566,7 +2666,7 @@
             gradeHighContrastBW);
 
         // ---- TAB 5: TEMPLATES ----
-        var tabTemplates = makeScrollableTab(tabs,"Templates");
+        var tabTemplates = makeScrollableSection(stack,"Templates");
 
         sectionHeader(tabTemplates,"SEQUENCE TEMPLATES");
         featureButton(tabTemplates,"Intro Punch","combo",
@@ -2583,7 +2683,7 @@
             templateCinematicReveal);
 
         // ---- TAB 6: TRANSITIONS ----
-        var tabTransitions = makeScrollableTab(tabs,"Transitions");
+        var tabTransitions = makeScrollableSection(stack,"Transitions");
 
         var noteT = tabTransitions.add("statictext",undefined,
             "⚠ Sélectionnez le(s) calque(s) à animer (sauf Flash Cut, Camera Shake et Warp/Distort, qui s'appliquent sur toute la comp).",
@@ -2653,7 +2753,7 @@
             addFrameBlend);
 
         // ---- TAB 7: CAMERA ----
-        var tabCamera = makeScrollableTab(tabs,"Camera");
+        var tabCamera = makeScrollableSection(stack,"Camera");
 
         var noteC = tabCamera.add("statictext",undefined,
             "⚠ Ces outils créent/utilisent une caméra 3D (\"EH_Camera\") parentée à un null "+
@@ -2693,10 +2793,22 @@
             fakeHandheld);
 
         // ---- TAB 8: AI CHAT ----
-        var tabChat = tabs.add("tab",undefined,"AI Chat");
+        var tabChat = makeScrollableSection(stack,"AI Chat");
         buildChatTab(tabChat);
 
-        // ---- Footer (outside tabs) ----
+        // ---- Sidebar nav buttons ----
+        var navItems = [
+            ["Home","flash"], ["Edit","adjustment"], ["Text","typewriter"],
+            ["Sounds","sound"], ["Overlays","grain"], ["Templates","combo"],
+            ["Transitions","whip"], ["Camera","cameraIcon"], ["AI Chat","ai"]
+        ];
+        for (var ni=0; ni<navItems.length; ni++) {
+            sidebarButton(sidebar, navItems[ni][0], navItems[ni][1], navItems[ni][0],
+                function(key){ showSection(panel,key); });
+        }
+        showSection(panel,"Home");
+
+        // ---- Footer (outside sidebar/stack) ----
         var footer = panel.add("group");
         footer.orientation="row"; footer.alignment=["fill","bottom"]; footer.spacing=6;
 

@@ -6,6 +6,17 @@ Format: `[Version] — YYYY-MM-DD`
 
 ---
 
+## [1.2.0] — 2026-06-13
+
+### New UI — Sidebar navigation + Home page
+
+- Replaced the horizontal tab bar with a compact left **sidebar** (icon + label nav) and a content area on the right — matches the "premium script pro" look (near-black/violet palette, glow accents).
+- New **Home** section: quick-launch cards for the best combo templates (Anime Impact, Intro Punch, Glitch Transition, Cinematic Reveal) plus the most-used project actions (Auto Precomp, Organize Project, Clean EH_ Layers) — no more digging through tabs for the essentials.
+- Updated dark palette to the new FXCore brand colors (#0B0B12 background, #141421 panels, #8B35FF accent, #F2F2F2 text, #9A9AAF muted text).
+- All existing tabs (Edit, Text, Sounds, Overlays, Templates, Transitions, Camera, AI Chat) are now sidebar sections with the same scrollable layout as before.
+
+---
+
 ## [1.1.0] — 2026-06-12
 
 ### Added — Auto-Update

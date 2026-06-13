@@ -6,6 +6,17 @@ Format: `[Version] — YYYY-MM-DD`
 
 ---
 
+## [1.3.0] — 2026-06-13
+
+### Added — Favorites & Recently Used
+
+- Every effect card now has a ☆ star toggle to mark it as a favorite.
+- New **Favorites** section in the sidebar lists every starred effect for one-click access.
+- New **"Récemment utilisés"** section on the Home page automatically tracks your last 5 actions.
+- Both lists persist between sessions.
+
+---
+
 ## [1.2.0] — 2026-06-13
 
 ### New UI — Sidebar navigation + Home page

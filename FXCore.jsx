@@ -66,7 +66,7 @@
 (function FXCore(thisObj) {
 
     var SCRIPT_NAME    = "FXCore";
-    var SCRIPT_VERSION = "1.2";
+    var SCRIPT_VERSION = "1.3";
     var SETTINGS_KEY   = "FXCore";
 
     // ============================================================
@@ -82,7 +82,9 @@
         soundFolder : "",
         aiBridgeHost: "",
         autoUpdate  : "1",
-        lastUpdateCheck: "0"
+        lastUpdateCheck: "0",
+        favorites   : "",
+        recentActions: ""
     };
 
     function loadSetting(key) {
@@ -105,8 +107,74 @@
         soundFolder : loadSetting("soundFolder"),
         aiBridgeHost: loadSetting("aiBridgeHost"),
         autoUpdate  : loadSetting("autoUpdate"),
-        lastUpdateCheck: loadSetting("lastUpdateCheck")
+        lastUpdateCheck: loadSetting("lastUpdateCheck"),
+        favorites   : loadSetting("favorites"),
+        recentActions: loadSetting("recentActions")
     };
+
+    // ============================================================
+    //  FAVORITES & RECENTLY USED
+    // ============================================================
+
+    var SEP = "@@";
+    var actionRegistry = []; // { label, icon, desc, run }
+
+    function listFromSetting(v) { return v ? v.split(SEP) : []; }
+
+    function getFavorites() { return listFromSetting(settings.favorites); }
+    function isFavorite(label) {
+        var f = getFavorites();
+        for (var i=0;i<f.length;i++) if (f[i]===label) return true;
+        return false;
+    }
+    function toggleFavorite(label) {
+        var f = getFavorites();
+        var idx = -1;
+        for (var i=0;i<f.length;i++) if (f[i]===label) { idx=i; break; }
+        if (idx>=0) f.splice(idx,1); else f.push(label);
+        settings.favorites = f.join(SEP);
+        saveSetting("favorites", settings.favorites);
+        refreshFavoritesSection();
+    }
+
+    function getRecent() { return listFromSetting(settings.recentActions); }
+    function recordRecent(label) {
+        var r = getRecent();
+        var idx = r.indexOf(label);
+        if (idx>=0) r.splice(idx,1);
+        r.unshift(label);
+        if (r.length>5) r = r.slice(0,5);
+        settings.recentActions = r.join(SEP);
+        saveSetting("recentActions", settings.recentActions);
+        refreshRecentSection();
+    }
+
+    function findAction(label) {
+        for (var i=0;i<actionRegistry.length;i++) if (actionRegistry[i].label===label) return actionRegistry[i];
+        return null;
+    }
+
+    /** Rebuilds the dynamic content of `content` from a list of action labels. Removes existing children first. */
+    function rebuildActionList(content, labels, emptyMsg) {
+        while (content.children.length) content.remove(content.children[0]);
+        if (!labels.length) {
+            var msg = content.add("statictext",undefined,emptyMsg,{multiline:true});
+            msg.alignment=["fill","top"];
+            allDescs.push(msg);
+        } else {
+            for (var i=0;i<labels.length;i++) {
+                var a = findAction(labels[i]);
+                if (a) featureButton(content, a.label, a.icon, a.desc, a.run);
+            }
+        }
+        try { applyTheme(mainPanelRef); } catch(e){}
+        try { mainPanelRef.layout.layout(true); } catch(e){}
+        try { updateScrollbars(); } catch(e){}
+    }
+
+    var refreshFavoritesSection = function(){};
+    var refreshRecentSection = function(){};
+    var mainPanelRef = null;
 
     // ============================================================
     //  AUTO-UPDATE
@@ -1933,8 +2001,21 @@
         frameBlendIcon:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.3,s*.7,s*.7);g.strokePath(p);g.newPath();g.rectPath(x+s*.3,y,s*.7,s*.7);g.strokePath(p);},
         cameraIcon:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.25,s*.65,s*.5);g.strokePath(p);g.newPath();g.moveTo(x+s*.65,y+s*.4);g.lineTo(x+s,y+s*.2);g.lineTo(x+s,y+s*.8);g.lineTo(x+s*.65,y+s*.6);g.closePath();g.strokePath(p);},
         parallaxIcon:function(g,x,y,s,p){for(var i=0;i<3;i++){g.newPath();g.rectPath(x+s*i*.15,y+s*i*.15,s*.6,s*.6);g.strokePath(p);}},
-        dollyIcon:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.6,s,s*.15);g.strokePath(p);g.newPath();g.ellipsePath(x+s*.15,y+s*.78,s*.12,s*.12);g.strokePath(p);g.newPath();g.ellipsePath(x+s*.6,y+s*.78,s*.12,s*.12);g.strokePath(p);g.newPath();g.moveTo(x+s*.2,y+s*.55);g.lineTo(x+s*.5,y);g.lineTo(x+s*.85,y+s*.55);g.closePath();g.strokePath(p);}
+        dollyIcon:function(g,x,y,s,p){g.newPath();g.rectPath(x,y+s*.6,s,s*.15);g.strokePath(p);g.newPath();g.ellipsePath(x+s*.15,y+s*.78,s*.12,s*.12);g.strokePath(p);g.newPath();g.ellipsePath(x+s*.6,y+s*.78,s*.12,s*.12);g.strokePath(p);g.newPath();g.moveTo(x+s*.2,y+s*.55);g.lineTo(x+s*.5,y);g.lineTo(x+s*.85,y+s*.55);g.closePath();g.strokePath(p);},
+        star:function(g,x,y,s,p){starPath(g,x+s/2,y+s/2,s/2,s/2*0.45);g.strokePath(p);}
     };
+
+    /** Builds (without stroking/filling) a 5-point star path centered on (cx,cy). */
+    function starPath(g, cx, cy, rOuter, rInner) {
+        g.newPath();
+        for (var i=0;i<10;i++) {
+            var ang = -Math.PI/2 + i*Math.PI/5;
+            var r = (i%2===0) ? rOuter : rInner;
+            var px = cx + Math.cos(ang)*r, py = cy + Math.sin(ang)*r;
+            if (i===0) g.moveTo(px,py); else g.lineTo(px,py);
+        }
+        g.closePath();
+    }
 
     // ============================================================
     //  CUSTOM BUTTON WIDGETS
@@ -1978,7 +2059,11 @@
             g.strokePath(g.newPen(g.PenType.SOLID_COLOR,[ac[0],ac[1],ac[2],0.35],1));
         };
 
-        var btn = col.add("button", undefined, "");
+        var row = col.add("group");
+        row.orientation="row"; row.alignChildren=["fill","fill"]; row.spacing=2; row.margins=0;
+        row.alignment=["fill","top"];
+
+        var btn = row.add("button", undefined, "");
         btn.alignment = ["fill","top"];
         btn.preferredSize = [-1, 24];
         btn.helpTip = desc;
@@ -2002,7 +2087,32 @@
         };
         btn.addEventListener("mouseover",function(){this._hover=true; safeRedraw(this);});
         btn.addEventListener("mouseout", function(){this._hover=false; safeRedraw(this);});
-        btn.onClick = onClick;
+        btn.onClick = function(){ onClick(); recordRecent(label); };
+
+        // Favorite toggle (star).
+        var starBtn = row.add("button", undefined, "");
+        starBtn.alignment = ["right","top"];
+        starBtn.preferredSize = [22, 24];
+        starBtn._fav = isFavorite(label);
+        starBtn.helpTip = "Ajouter / retirer des favoris";
+        starBtn.onDraw = function() {
+            var g=this.graphics, th=theme(), ac=accent();
+            var w=this.size[0], h=this.size[1];
+            var bg = this._hover ? th.btnHover : th.panel;
+            g.newPath(); g.rectPath(0,0,w,h);
+            g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,[bg[0],bg[1],bg[2],1]));
+            var col2 = this._fav ? [ac[0],ac[1],ac[2],1] : [th.subtext[0],th.subtext[1],th.subtext[2],0.6];
+            starPath(g, w/2, h/2, 7, 3.2);
+            if (this._fav) g.fillPath(g.newBrush(g.BrushType.SOLID_COLOR,col2));
+            g.strokePath(g.newPen(g.PenType.SOLID_COLOR,col2,1));
+        };
+        starBtn.addEventListener("mouseover",function(){this._hover=true; safeRedraw(this);});
+        starBtn.addEventListener("mouseout", function(){this._hover=false; safeRedraw(this);});
+        starBtn.onClick = function(){
+            toggleFavorite(label);
+            this._fav = isFavorite(label);
+            safeRedraw(this);
+        };
 
         var d = col.add("statictext", undefined, desc, {multiline:true});
         d.alignment = ["fill","top"];
@@ -2012,8 +2122,12 @@
         } catch(e) {}
 
         allButtons.push(btn);
+        allButtons.push(starBtn);
         allHeaders.push(col);   // so the card frame is redrawn on theme change
         allDescs.push(d);
+
+        if (!findAction(label)) actionRegistry.push({ label:label, icon:iconName, desc:desc, run:onClick });
+
         return col;
     }
 
@@ -2430,6 +2544,7 @@
 
         panel.orientation="column"; panel.alignChildren=["fill","top"];
         panel.spacing=6; panel.margins=[8,8,8,6];
+        mainPanelRef = panel;
 
         buildLogoHeader(panel);
 
@@ -2484,6 +2599,18 @@
         featureButton(tabHome,"Clean EH_ Layers","trash",
             "Supprime tous les calques générés par le panel (préfixe EH_) dans la comp active.",
             removeEHLayers);
+
+        sectionHeader(tabHome,"RÉCEMMENT UTILISÉS");
+        var recentGroup = tabHome.add("group");
+        recentGroup.orientation="column"; recentGroup.alignChildren=["fill","top"];
+        recentGroup.spacing=5; recentGroup.margins=0; recentGroup.alignment=["fill","top"];
+
+        // ---- SECTION: FAVORITES ----
+        var tabFavorites = makeScrollableSection(stack,"Favorites");
+        sectionHeader(tabFavorites,"FAVORIS");
+        var favGroup = tabFavorites.add("group");
+        favGroup.orientation="column"; favGroup.alignChildren=["fill","top"];
+        favGroup.spacing=5; favGroup.margins=0; favGroup.alignment=["fill","top"];
 
         // ---- SECTION: EDIT ----
         var tabEdit = makeScrollableSection(stack,"Edit");
@@ -2800,12 +2927,23 @@
         var navItems = [
             ["Home","flash"], ["Edit","adjustment"], ["Text","typewriter"],
             ["Sounds","sound"], ["Overlays","grain"], ["Templates","combo"],
-            ["Transitions","whip"], ["Camera","cameraIcon"], ["AI Chat","ai"]
+            ["Transitions","whip"], ["Camera","cameraIcon"], ["AI Chat","ai"],
+            ["Favorites","star"]
         ];
         for (var ni=0; ni<navItems.length; ni++) {
             sidebarButton(sidebar, navItems[ni][0], navItems[ni][1], navItems[ni][0],
                 function(key){ showSection(panel,key); });
         }
+
+        refreshRecentSection = function(){
+            rebuildActionList(recentGroup, getRecent(), "Aucune action récente — vos derniers effets apparaîtront ici.");
+        };
+        refreshFavoritesSection = function(){
+            rebuildActionList(favGroup, getFavorites(), "Cliquez sur l'étoile ☆ d'un effet pour l'ajouter à vos favoris.");
+        };
+        refreshRecentSection();
+        refreshFavoritesSection();
+
         showSection(panel,"Home");
 
         // ---- Footer (outside sidebar/stack) ----
